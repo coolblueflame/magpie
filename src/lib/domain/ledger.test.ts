@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { accountBalances, lineEffect, needsCategory, validateTransaction } from './ledger';
+import { accountBalances, ledgerRows, lineEffect, needsCategory, validateTransaction } from './ledger';
+import { seedData } from './seed';
 import type { Account, Transaction } from './types';
 
 const acct = (id: string, onBudget: boolean): Account => ({
@@ -98,5 +99,31 @@ describe('accountBalances', () => {
     expect(b.get('chq')).toEqual({ working: 620, cleared: 1000 });
     expect(b.get('card')).toEqual({ working: 180, cleared: 180 });
     expect(b.get('inv')).toEqual({ working: 0, cleared: 0 });
+  });
+});
+
+describe('ledgerRows', () => {
+  const s = seedData('2026-09');
+  test('the card ledger shows the incoming transfer as a far row and runs to the balance', () => {
+    const rows = ledgerRows('acc_card', s.transactions);
+    const far = rows.find((r) => r.far)!;
+    expect(far).toMatchObject({ txId: 'seed_t10', id: 'seed_t10:0', ownerAccountId: 'acc_chq', amount: 38000, cleared: 'cleared', kind: { type: 'transfer', accountId: 'acc_chq' } });
+    expect(rows[0]!.running).toBe(accountBalances(s.accounts, s.transactions).get('acc_card')!.working);
+    expect(rows.map((r) => r.date)).toEqual([...rows.map((r) => r.date)].sort().reverse());
+    expect(rows.find((r) => r.txId === 'seed_t15')).toMatchObject({ status: 'new', kind: { type: 'category' }, payeeId: 'pay_grocer' });
+  });
+  test('an owner ledger shows the transfer once with its category, and the off-budget side sees it too', () => {
+    const chq = ledgerRows('acc_chq', s.transactions);
+    expect(chq.filter((r) => r.txId === 'seed_t6')).toHaveLength(1);
+    expect(chq.find((r) => r.txId === 'seed_t6')!.kind).toEqual({ type: 'transfer', accountId: 'acc_inv', categoryId: 'cat_save' });
+    const inv = ledgerRows('acc_inv', s.transactions);
+    expect(inv).toHaveLength(1);
+    expect(inv[0]).toMatchObject({ far: true, amount: 50000, running: 50000 });
+  });
+  test('tombstones are skipped and a split is labelled by its line count', () => {
+    const split: Transaction = { ...s.transactions[0]!, id: 'sp', lines: [{ categoryId: 'a', amount: 100, memo: '' }, { categoryId: 'b', amount: 300, memo: '' }], amount: 400 };
+    const rows = ledgerRows('acc_chq', [split, { ...s.transactions[1]!, deleted: true }]);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.kind).toEqual({ type: 'split', lines: 2 });
   });
 });

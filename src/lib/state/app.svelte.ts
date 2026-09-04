@@ -24,6 +24,11 @@ const TABLES: TableName[] = ['accounts', 'groups', 'categories', 'assignments', 
 /** Shape of the JSON backup file. */
 export type JsonBackup = Snapshot & { schema: 1; exportedAt: string };
 
+/** One step of an undoable batch: patch an existing row, or create a new one under a pre-minted id. */
+export type Edit =
+  | { table: TableName; id: string; patch: Partial<Row> }
+  | { table: TableName; id: string; create: Omit<Row, keyof Row> };
+
 export class AppStore {
   state: AppState = $state({
     accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], history: [],
@@ -179,35 +184,53 @@ export class AppStore {
     if (row) this.applyToMirror(table, row);
   }
 
+  /**
+   * Any number of creates and patches across tables as ONE undo entry. Priors
+   * are captured from the mirror before the first write; undo runs in reverse
+   * order (creates become tombstones, patches restore their prior keys); redo
+   * re-applies (a create comes back by clearing its tombstone).
+   */
+  async commitEdits(edits: Edit[], label: string): Promise<void> {
+    const steps = edits.map((e) => {
+      if ('create' in e) return { ...e, prior: undefined };
+      const current = this.mirrorOf(e.table).find((r) => r.id === e.id);
+      if (!current) throw new Error(`no ${e.table} row ${e.id}`);
+      const prior = Object.fromEntries(Object.keys(e.patch).map((k) => [k, $state.snapshot((current as unknown as Record<string, unknown>)[k])])) as Partial<Row>;
+      return { ...e, prior };
+    });
+    const apply = async (first: boolean) => {
+      for (const s of steps) {
+        if ('create' in s) {
+          if (first) { const row = await this.repo.create<Row>(s.table, { ...s.create, id: s.id } as Omit<Row, keyof Row> & { id: string }); this.applyToMirror(s.table, row); }
+          else await this.writePatch(s.table, s.id, { deleted: false });
+        } else await this.writePatch(s.table, s.id, s.patch);
+      }
+    };
+    const revert = async () => {
+      for (const s of [...steps].reverse()) {
+        if ('create' in s) await this.writePatch(s.table, s.id, { deleted: true });
+        else await this.writePatch(s.table, s.id, s.prior!);
+      }
+    };
+    undoStack.push(label, revert, () => apply(false));
+    await apply(true);
+  }
+
   /** One undoable patch. Undo restores exactly the keys the patch touched, as they were. */
-  async patchRow<T extends Row>(table: TableName, id: string, patch: Partial<T>, label: string): Promise<void> {
-    await this.patchRows<T>(table, [{ id, patch }], label);
+  patchRow<T extends Row>(table: TableName, id: string, patch: Partial<T>, label: string): Promise<void> {
+    return this.commitEdits([{ table, id, patch: patch as Partial<Row> }], label);
   }
 
   /** Several patches on one table as one undo entry. */
-  async patchRows<T extends Row>(table: TableName, edits: { id: string; patch: Partial<T> }[], label: string): Promise<void> {
-    const mirror = this.mirrorOf(table);
-    const priors = edits.map(({ id, patch }) => {
-      const current = mirror.find((r) => r.id === id) as T | undefined;
-      if (!current) throw new Error(`no ${table} row ${id}`);
-      const prior = Object.fromEntries(Object.keys(patch).map((k) => [k, $state.snapshot(current[k as keyof T])])) as Partial<T>;
-      return { id, prior };
-    });
-    const apply = async () => { for (const e of edits) await this.writePatch<T>(table, e.id, e.patch); };
-    const revert = async () => { for (const p of priors) await this.writePatch<T>(table, p.id, p.prior); };
-    undoStack.push(label, revert, apply);
-    await apply();
+  patchRows<T extends Row>(table: TableName, edits: { id: string; patch: Partial<T> }[], label: string): Promise<void> {
+    return this.commitEdits(edits.map((e) => ({ table, id: e.id, patch: e.patch as Partial<Row> })), label);
   }
 
-  /** One undoable create. The id is minted first so undo can be armed before the write. */
+  /** One undoable create. The id is minted first so undo is armed before the write. */
   async createRow<T extends Row>(table: TableName, draft: Omit<T, keyof Row>, label: string): Promise<T> {
     const id = nanoid();
-    undoStack.push(label,
-      () => this.writePatch<T>(table, id, { deleted: true } as Partial<T>),
-      () => this.writePatch<T>(table, id, { deleted: false } as Partial<T>));
-    const row = await this.repo.create<T>(table, { ...draft, id });
-    this.applyToMirror(table, row);
-    return row;
+    await this.commitEdits([{ table, id, create: draft as Omit<Row, keyof Row> }], label);
+    return this.mirrorOf(table).find((r) => r.id === id) as T;
   }
 
   // ── budget management (phase 3a) ────────────────────────────────────────

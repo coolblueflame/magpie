@@ -1,5 +1,5 @@
 import { addMonths } from './month';
-import { assignmentId, RTA, type Account, type Assignment, type Category, type CategoryGroup, type Line, type MonthKey, type Transaction } from './types';
+import { assignmentId, RTA, type Account, type Assignment, type Category, type CategoryGroup, type Line, type MonthKey, type Payee, type Transaction } from './types';
 
 const base = { updatedAt: 1, deleted: false } as const;
 
@@ -35,27 +35,33 @@ export function seedData(currentMonth: MonthKey) {
     asg('cat_groc', m1, 60000), asg('cat_fun', m1, 15000), asg('cat_rent', m1, 150000), asg('cat_util', m1, 20000), asg('cat_save', m1, 50000),
     asg('cat_groc', m0, 60000), asg('cat_rent', m0, 150000),
   ];
+  const payee = (id: string, name: string): Payee => ({ ...base, id, name, aliases: [], note: '' });
+  const payees: Payee[] = [
+    payee('pay_employer', 'Employer'), payee('pay_landlord', 'Landlord'), payee('pay_grocer', 'Grocer'),
+    payee('pay_arcade', 'Arcade'), payee('pay_power', 'Power Co'), payee('pay_mystery', 'Mystery'),
+  ];
   let n = 0;
-  const tx = (accountId: string, date: string, amount: number, lines: Line[], over: Partial<Transaction> = {}): Transaction => ({
+  const tx = (accountId: string, date: string, amount: number, lines: Line[], payeeId?: string, over: Partial<Transaction> = {}): Transaction => ({
     ...base, id: `seed_t${++n}`, accountId, date, memo: '', amount, cleared: 'cleared', status: 'ok',
-    source: { kind: 'manual', batchId: 'seed' }, lines, ...over,
+    source: { kind: 'manual', batchId: 'seed' }, lines, ...(payeeId ? { payeeId } : {}), ...over,
   });
   const cl = (categoryId: string, amount: number): Line => ({ categoryId, amount, memo: '' });
   const transactions: Transaction[] = [
-    tx('acc_chq', `${m2}-01`, 400000, [cl(RTA, 400000)]),
-    tx('acc_chq', `${m2}-01`, -150000, [cl('cat_rent', -150000)]),
-    tx('acc_chq', `${m2}-05`, -45000, [cl('cat_groc', -45000)]),
-    tx('acc_card', `${m2}-10`, -20000, [cl('cat_fun', -20000)]),
-    tx('acc_card', `${m2}-15`, -18000, [cl('cat_util', -18000)]),
+    tx('acc_chq', `${m2}-01`, 400000, [cl(RTA, 400000)], 'pay_employer'),
+    tx('acc_chq', `${m2}-01`, -150000, [cl('cat_rent', -150000)], 'pay_landlord'),
+    tx('acc_chq', `${m2}-05`, -45000, [cl('cat_groc', -45000)], 'pay_grocer'),
+    tx('acc_card', `${m2}-10`, -20000, [cl('cat_fun', -20000)], 'pay_arcade'),
+    tx('acc_card', `${m2}-15`, -18000, [cl('cat_util', -18000)], 'pay_power'),
     tx('acc_chq', `${m2}-20`, -50000, [{ transferAccountId: 'acc_inv', categoryId: 'cat_save', amount: -50000, memo: '', farCleared: 'cleared' }]),
-    tx('acc_chq', `${m1}-01`, 400000, [cl(RTA, 400000)]),
-    tx('acc_chq', `${m1}-01`, -150000, [cl('cat_rent', -150000)]),
-    tx('acc_card', `${m1}-07`, -62000, [cl('cat_groc', -62000)]),
+    tx('acc_chq', `${m1}-01`, 400000, [cl(RTA, 400000)], 'pay_employer'),
+    tx('acc_chq', `${m1}-01`, -150000, [cl('cat_rent', -150000)], 'pay_landlord'),
+    tx('acc_card', `${m1}-07`, -62000, [cl('cat_groc', -62000)], 'pay_grocer'),
     tx('acc_chq', `${m1}-12`, -38000, [{ transferAccountId: 'acc_card', amount: -38000, memo: '', farCleared: 'cleared' }]),
-    tx('acc_chq', `${m0}-01`, 400000, [cl(RTA, 400000)]),
-    tx('acc_chq', `${m0}-01`, -150000, [cl('cat_rent', -150000)]),
-    tx('acc_card', `${m0}-03`, -12345, [cl('cat_groc', -12345)]),
-    tx('acc_card', `${m0}-04`, -4200, [{ amount: -4200, memo: '' }], { status: 'new' }),
+    tx('acc_chq', `${m0}-01`, 400000, [cl(RTA, 400000)], 'pay_employer'),
+    tx('acc_chq', `${m0}-01`, -150000, [cl('cat_rent', -150000)], 'pay_landlord'),
+    tx('acc_card', `${m0}-03`, -12345, [cl('cat_groc', -12345)], 'pay_grocer'),
+    tx('acc_card', `${m0}-04`, -4200, [{ amount: -4200, memo: '' }], 'pay_mystery', { status: 'new' }),
+    tx('acc_card', `${m0}-05`, -1555, [{ amount: -1555, memo: '' }], 'pay_grocer', { status: 'new' }),
   ];
-  return { accounts, groups, categories, assignments, transactions };
+  return { accounts, groups, categories, payees, assignments, transactions };
 }

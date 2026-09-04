@@ -15,7 +15,7 @@ async function resetWithSeed(page: Page) {
 test('the budget screen shows the seed month', async ({ page }) => {
   await resetWithSeed(page);
   await expect(page.getByTestId('rta')).toHaveText('$4,000.00');
-  await expect(page.getByTestId('uncategorised')).toHaveText('Uncategorised -$42.00');
+  await expect(page.getByTestId('uncategorised')).toHaveText('Uncategorised -$57.55');
   await expect(page.getByTestId('group-grp_every')).toBeVisible();
   await expect(page.getByTestId('assigned-cat_groc')).toHaveText('$600.00');
   await expect(page.getByTestId('activity-cat_groc')).toHaveText('-$123.45');

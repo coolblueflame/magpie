@@ -1,4 +1,4 @@
-import type { Account, Cents, Line, Transaction } from './types';
+import type { Account, Cents, ClearedState, IsoDate, Line, Transaction, TxStatus } from './types';
 
 /**
  * Whether a line touches the budget and therefore needs a category (spec §4.3).
@@ -73,4 +73,67 @@ export function accountBalances(
     }
   }
   return out;
+}
+
+export type LedgerKind =
+  | { type: 'category'; categoryId?: string }
+  | { type: 'transfer'; accountId: string; categoryId?: string }
+  | { type: 'split'; lines: number };
+
+/** One line of an account's ledger: an own transaction, or the far side of a transfer owned elsewhere. */
+export interface LedgerRow {
+  /** txId for own rows; `${txId}:${lineIndex}` for far rows. */
+  id: string;
+  txId: string;
+  far: boolean;
+  ownerAccountId: string;
+  date: IsoDate;
+  payeeId?: string;
+  memo: string;
+  /** This account's view; far rows negate the transfer line. */
+  amount: Cents;
+  cleared: ClearedState;
+  status: TxStatus;
+  kind: LedgerKind;
+  /** Balance after this row, in date order. */
+  running: Cents;
+}
+
+function kindOf(lines: Line[]): LedgerKind {
+  if (lines.length !== 1) return { type: 'split', lines: lines.length };
+  const l = lines[0]!;
+  if (l.transferAccountId) return { type: 'transfer', accountId: l.transferAccountId, ...(l.categoryId ? { categoryId: l.categoryId } : {}) };
+  return l.categoryId ? { type: 'category', categoryId: l.categoryId } : { type: 'category' };
+}
+
+/**
+ * An account's ledger, newest first, with running balances. A transfer is one
+ * stored row, so the far account sees it here as a derived row it does not own.
+ */
+export function ledgerRows(accountId: string, transactions: Transaction[]): LedgerRow[] {
+  const rows: LedgerRow[] = [];
+  for (const tx of transactions) {
+    if (tx.deleted) continue;
+    if (tx.accountId === accountId) {
+      rows.push({
+        id: tx.id, txId: tx.id, far: false, ownerAccountId: tx.accountId, date: tx.date, memo: tx.memo,
+        amount: tx.amount, cleared: tx.cleared, status: tx.status, kind: kindOf(tx.lines), running: 0,
+        ...(tx.payeeId ? { payeeId: tx.payeeId } : {}),
+      });
+      continue;
+    }
+    tx.lines.forEach((l, i) => {
+      if (l.transferAccountId !== accountId) return;
+      rows.push({
+        id: `${tx.id}:${i}`, txId: tx.id, far: true, ownerAccountId: tx.accountId, date: tx.date, memo: l.memo || tx.memo,
+        amount: -l.amount, cleared: l.farCleared ?? 'uncleared', status: tx.status,
+        kind: { type: 'transfer', accountId: tx.accountId, ...(l.categoryId ? { categoryId: l.categoryId } : {}) }, running: 0,
+        ...(tx.payeeId ? { payeeId: tx.payeeId } : {}),
+      });
+    });
+  }
+  rows.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  let running = 0;
+  for (const r of rows) { running += r.amount; r.running = running; }
+  return rows.reverse();
 }
