@@ -66,9 +66,13 @@ describe('validateTransaction', () => {
   test('a new transaction may leave the category empty', () => {
     expect(validateTransaction(tx({ status: 'new', lines: [{ amount: -100, memo: '' }] }), byId)).toEqual([]);
   });
-  test('a category is rejected where the budget is not touched', () => {
-    expect(validateTransaction(tx({ lines: [{ transferAccountId: 'card', categoryId: 'groc', amount: -100, memo: '' }] }), byId))
-      .toContain('line 1 must not have a category');
+  test('a category where the budget is not touched is allowed and reporting-only', () => {
+    const line = { transferAccountId: 'card', categoryId: 'groc', amount: -100, memo: '' };
+    expect(validateTransaction(tx({ lines: [line] }), byId)).toEqual([]);
+    expect(lineEffect(line, chq, card)).toBe(0);
+    const drift = { categoryId: 'invincome', amount: 1234, memo: '' };
+    expect(validateTransaction(tx({ accountId: 'inv', amount: 1234, lines: [drift] }), byId)).toEqual([]);
+    expect(lineEffect(drift, inv, undefined)).toBe(0);
   });
   test('a transfer to the same account and to an unknown account are rejected', () => {
     expect(validateTransaction(tx({ lines: [{ transferAccountId: 'chq', amount: -100, memo: '' }] }), byId))

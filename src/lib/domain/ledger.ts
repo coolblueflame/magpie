@@ -22,7 +22,12 @@ export function lineEffect(line: Line, own: Account, far: Account | undefined): 
   return own.onBudget ? line.amount : -line.amount;
 }
 
-/** Problems with a transaction, in plain words; empty means valid. */
+/**
+ * Problems with a transaction, in plain words; empty means valid. A category on
+ * a line that does not touch the budget (an off-budget account's own row, a
+ * transfer between two on-budget accounts) is allowed: it is reporting-only,
+ * lineEffect returns 0 for it, and imports keep the source's classification.
+ */
 export function validateTransaction(tx: Transaction, accountsById: Map<string, Account>): string[] {
   const errors: string[] = [];
   const own = accountsById.get(tx.accountId);
@@ -37,9 +42,7 @@ export function validateTransaction(tx: Transaction, accountsById: Map<string, A
       far = accountsById.get(line.transferAccountId);
       if (!far) { errors.push(`line ${n} transfers to unknown account ${line.transferAccountId}`); return; }
     }
-    const needs = needsCategory(line, own, far);
-    if (needs && !line.categoryId && tx.status === 'ok') errors.push(`line ${n} needs a category`);
-    if (!needs && line.categoryId) errors.push(`line ${n} must not have a category`);
+    if (needsCategory(line, own, far) && !line.categoryId && tx.status === 'ok') errors.push(`line ${n} needs a category`);
   });
   return errors;
 }

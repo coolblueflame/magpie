@@ -86,14 +86,16 @@ Visual: lean into magpie colours. Dark background, blues, whites, greys.
 - **Credit cards are ordinary accounts** that go negative. No card-specific tooling.
 - **Payees are entities.** Many raw import descriptors map to one payee; rename or merge once,
   and every view (search, history, stats) groups by the payee, never the descriptor.
-- **The monthly goal fills on a button click per category,** never automatically and with no
-  "fill every category" action, so future months can be partially assigned without going
-  negative.
+- **The monthly goal fills on a button click,** per category or all categories at once (each
+  to its own goal), never automatically, so future months can be partially assigned without
+  going negative.
 - **Spending stats live on the budget screen** per category: all-time average, trailing
   12-month average, last month's spend.
 - **Shared expenses with a partner are first-class:** the partner is an on-budget "person"
   account (imported from its YNAB account, balance and history intact), a percentage split
   per transaction, and share claims from the sheet export matched to bank rows.
+- **Investment accounts track a CAD total only;** the drift is a transaction to a designated
+  payee with a reporting-only category so gains show up in reports, never in the budget.
 - **Investment, mortgage and crypto accounts are off-budget tracking accounts** in v1. Loan
   tools come later with a concrete brief (spec §10): the mortgage's interest arrives in its
   statements; a family loan needs generated monthly interest at an agreed, editable rate.

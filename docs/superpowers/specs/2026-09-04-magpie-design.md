@@ -161,7 +161,9 @@ does not jump during import review; the budget header shows the uncategorised to
 it is non-zero.
 
 Filling a category's goal for month `m` sets `assigned(c, m) = goal` (no-op if already at
-or above goal). There is no "fill every category" action.
+or above goal). A "fill all goals" action does this for every visible category in the
+month, each to its own goal, and shows the total it will take from Ready to Assign before
+it commits; it is one undo entry.
 
 ### 4.3 Transfers and budget effect
 
@@ -171,12 +173,15 @@ amount negated. `balance(B)` follows the same rule.
 
 Budget effect of a line, for `activity`:
 
-- Both accounts on-budget: the line must have no category; effect 0.
+- Both accounts on-budget: effect 0. A category here is allowed but reporting-only.
 - Own account on-budget, no transfer or transfer to off-budget: effect `line.amount`.
 - Own account off-budget, transfer to on-budget: effect `−line.amount`.
-- Neither on-budget: no category allowed; effect 0.
+- Neither on-budget, or an off-budget account's own row: effect 0. A category here is
+  allowed but reporting-only, which is how investment gains keep a category (§10) without
+  ever touching the budget.
 
-The domain validator rejects any line that breaks these rules on an `ok` transaction.
+The domain validator requires a category wherever the budget is touched on an `ok`
+transaction; it never strips one elsewhere.
 
 ### 4.4 Shared expenses
 
@@ -373,8 +378,11 @@ Each phase ends with gates green, a commit pushed, and the memory file updated.
   with no file (a family loan) gets a generated monthly interest transaction with a
   deterministic id. Wanted: a repayment chart, estimated payoff date at the standard
   payment, and a what-if for a yearly lump sum showing time saved.
-- **Assets**: `investment` and other tracking accounts with a manual balance-adjustment
-  transaction (no category) and, later, imported statements.
+- **Assets**: `investment` and other tracking accounts hold only a CAD total, never
+  holdings. A "set balance" action writes the drift as a transaction with a designated
+  payee and a reporting-only category (Ben's YNAB habit: payee "The Ether", category
+  "Investment Income"), so investment gains over time are a category report while the
+  budget never sees them. Imported statements may replace the manual step later.
 - **Charts**: spending by category over time, assigned vs spent, net worth; the stats
   columns in §6 are the seed.
 - **Live sheet link**: read the shared sheet directly instead of a CSV export.
