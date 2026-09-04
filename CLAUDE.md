@@ -40,8 +40,8 @@ anecdotes). Read it when doing import work; never quote it into the repo.
 
 ## The brief (Ben, 2026-09-04)
 
-Ben's own words, condensed. A design spec under `docs/superpowers/specs/` supersedes this once
-it exists; until then this is the feature list.
+Ben's own words, condensed. `docs/superpowers/specs/2026-09-04-magpie-design.md` is the
+approved design and wins wherever the two differ.
 
 Very similar to YNAB, with different month-to-month rollover and room for extra tools.
 
@@ -50,8 +50,8 @@ Very similar to YNAB, with different month-to-month rollover and room for extra 
 3. Totals flow month to month **including negative balances**: blow a category's budget and
    the hole carries forward, so the usual monthly amount digs you out (or you have less next
    month). No YNAB-style overspending reset.
-4. Each category remembers a usual monthly amount that can be assigned in one click and
-   edited afterwards.
+4. Each category remembers a **monthly goal** that can be assigned in one click and edited
+   afterwards. Categories sit in groups, as in YNAB.
 5. Move money between categories in one step ("some of X's budget into Y this month").
 6. Import statements from a file: QFX from banks and cards, plus a spreadsheet export from a
    shared expense tracker. Never a live bank connection.
@@ -63,15 +63,17 @@ Very similar to YNAB, with different month-to-month rollover and room for extra 
 11. Bulk-imported transactions carry a **new** flag that needs an action before it clears, so
     every row gets a category and a look before moving on.
 
-Door left open for: charts and visualisation, loan tracking, asset values.
+Door left open for: charts and visualisation, loan tracking (repayment chart, payoff
+estimate, lump-sum what-if, editable interest rate), asset values, reading the shared sheet
+live instead of via export, a mobile helper view.
 
 Visual: lean into magpie colours. Dark background, blues, whites, greys.
 
 ## Decisions (2026-09-04, from Ben; the spec carries the detail)
 
-- **Desktop-only UI.** No phone layout work. A private GitHub data repo is the cloud source of
-  truth (the OC model), and a mobile-friendly helper view may come later, so the sync layer
-  and data model must not assume a single device.
+- **Desktop-only UI, used mainly on Windows.** No phone layout work. One device until sync
+  exists. A private GitHub data repo is the cloud source of truth (the OC model), and a
+  mobile-friendly helper view may come later, so the data model must not assume one device.
 - **YNAB cutover:** import the full history for reporting; each category starts at YNAB's
   Available as of the export.
 - **Transactions enter almost only by file import.** Hand entry exists for cash purchases and
@@ -84,15 +86,17 @@ Visual: lean into magpie colours. Dark background, blues, whites, greys.
 - **Credit cards are ordinary accounts** that go negative. No card-specific tooling.
 - **Payees are entities.** Many raw import descriptors map to one payee; rename or merge once,
   and every view (search, history, stats) groups by the payee, never the descriptor.
-- **"Usual amount" fills on a button click** (per category and for a whole month), never
-  automatically, so future months can be partially assigned without going negative.
+- **The monthly goal fills on a button click per category,** never automatically and with no
+  "fill every category" action, so future months can be partially assigned without going
+  negative.
 - **Spending stats live on the budget screen** per category: all-time average, trailing
   12-month average, last month's spend.
-- **Shared expenses with a partner are first-class:** a percentage split per transaction and
-  a running receivable between the two people. The shared-sheet import is the register side
-  of the matcher.
-- **Investment, mortgage and crypto accounts are off-budget tracking accounts** in v1; loan
-  and asset tools come later.
+- **Shared expenses with a partner are first-class:** the partner is an on-budget "person"
+  account (imported from its YNAB account, balance and history intact), a percentage split
+  per transaction, and share claims from the sheet export matched to bank rows.
+- **Investment, mortgage and crypto accounts are off-budget tracking accounts** in v1. Loan
+  tools come later with a concrete brief (spec §10): the mortgage's interest arrives in its
+  statements; a family loan needs generated monthly interest at an agreed, editable rate.
 - **Nothing personal in the repo.** Institution names, card products, merchants, the
   partner's name, real amounts and account digits stay in `private/`. Import adapters are
   keyed by format (OFX/QFX; CSV column profiles stored as user data), never by institution.
