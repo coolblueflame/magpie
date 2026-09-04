@@ -3,7 +3,8 @@
  * private notes): a split whose lines carry different payees and a transfer,
  * transfer pairs with and without a category, a hidden category, the
  * Credit Card Payments group, an uncategorised row, an overspend that YNAB
- * reset at month end. Numbers are chosen so the Plan is consistent with the
+ * reset at month end. The split's transfer mirror row appears BEFORE the split,
+ * as happens in real exports. Numbers are chosen so the Plan is consistent with the
  * register under YNAB's rules; tests assert the builder reproduces them.
  *
  * Accounts: Chequing, Card, Partner (person), Brokerage (off-budget).
@@ -11,10 +12,10 @@
 export const REGISTER_CSV = `"Account","Flag","Date","Payee","Category Group/Category","Category Group","Category","Memo","Outflow","Inflow","Cleared"
 "Chequing","","07/01/2026","Starting Balance","Inflow: Ready to Assign","Inflow","Ready to Assign","","$0.00","$1000.00","Reconciled"
 "Card","","07/05/2026","Grocer","Everyday: Groceries","Everyday","Groceries","","$45.00","$0.00","Cleared"
+"Partner","","07/10/2026","Transfer : Chequing","","","","","$0.00","$20.00","Uncleared"
 "Chequing","","07/10/2026","Shop","Everyday: Groceries","Everyday","Groceries","Split (1/3) tape","$10.00","$0.00","Cleared"
 "Chequing","","07/10/2026","Other Shop","Everyday: Fun","Everyday","Fun","Split (2/3) ","$5.00","$0.00","Cleared"
 "Chequing","","07/10/2026","Transfer : Partner","","","","Split (3/3) ","$20.00","$0.00","Cleared"
-"Partner","","07/10/2026","Transfer : Chequing","","","","","$0.00","$20.00","Uncleared"
 "Chequing","","07/15/2026","Transfer : Card","","","","","$100.00","$0.00","Cleared"
 "Card","","07/15/2026","Transfer : Chequing","","","","","$0.00","$100.00","Cleared"
 "Chequing","","07/20/2026","Transfer : Brokerage","Bills: Rent","Bills","Rent","","$200.00","$0.00","Cleared"
