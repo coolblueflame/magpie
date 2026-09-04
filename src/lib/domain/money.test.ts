@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { formatCents, formatMoney, parseCents } from './money';
+import { formatCents, formatMoney, parseCents, roundHalfAway } from './money';
 
 describe('formatCents', () => {
   test('groups thousands and always shows two decimals', () => {
@@ -8,6 +8,15 @@ describe('formatCents', () => {
     expect(formatCents(123456)).toBe('1,234.56');
     expect(formatCents(-123456)).toBe('-1,234.56');
     expect(formatCents(-5)).toBe('-0.05');
+  });
+});
+
+describe('roundHalfAway', () => {
+  test('halves go away from zero, unlike Math.round', () => {
+    expect(roundHalfAway(-500.5)).toBe(-501);
+    expect(roundHalfAway(500.5)).toBe(501);
+    expect(roundHalfAway(-500.4)).toBe(-500);
+    expect(roundHalfAway(0)).toBe(0);
   });
 });
 

@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-As phase 1 and 2. Plus: averages divide by the number of months the category has existed within the window (min 1), never by a fixed 12 for a category younger than a year; all rounding is `Math.round` on cents.
+As phase 1 and 2. Plus: averages divide by the number of months the category has existed within the window (min 1), never by a fixed 12 for a category younger than a year; averages round half away from zero (`roundHalfAway` in `money.ts`; JS `Math.round` rounds -500.5 to -500).
 
 ---
 

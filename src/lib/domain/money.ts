@@ -10,6 +10,11 @@ export function formatCents(cents: Cents): string {
   return `${neg ? '-' : ''}${grouped}.${frac}`;
 }
 
+/** Round to a whole number of cents, halves away from zero: -500.5 → -501, 500.5 → 501. Math.round would give -500. */
+export function roundHalfAway(x: number): Cents {
+  return Math.sign(x) * Math.round(Math.abs(x));
+}
+
 /** "$606.55" / "-$42.00". Single currency, so the symbol is fixed. */
 export function formatMoney(cents: Cents): string {
   const s = formatCents(cents);

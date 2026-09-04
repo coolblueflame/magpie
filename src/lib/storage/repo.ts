@@ -26,6 +26,7 @@ export interface AppState {
   categories: Category[];
   assignments: Assignment[];
   transactions: Transaction[];
+  payees: Payee[];
   history: YnabHistory[];
   settings: Settings;
   /** Merge key for the settings singleton; 0 = never written. */
@@ -70,16 +71,16 @@ export class Repo {
   }
 
   async loadState(): Promise<AppState> {
-    const [accounts, groups, categories, assignments, transactions, history, settingsRow] = await Promise.all([
+    const [accounts, groups, categories, assignments, transactions, payees, history, settingsRow] = await Promise.all([
       this.db.accounts.toArray(), this.db.groups.toArray(), this.db.categories.toArray(),
-      this.db.assignments.toArray(), this.db.transactions.toArray(), this.db.history.toArray(),
+      this.db.assignments.toArray(), this.db.transactions.toArray(), this.db.payees.toArray(), this.db.history.toArray(),
       this.db.kv.get('settings'),
     ]);
     const live = <T extends Row>(rows: T[]) => rows.filter((r) => !r.deleted);
     const s = (settingsRow?.value ?? { data: {}, updatedAt: 0 }) as Stamped<Partial<Settings>>;
     return {
       accounts: live(accounts), groups: live(groups), categories: live(categories),
-      assignments: live(assignments), transactions: live(transactions), history: live(history),
+      assignments: live(assignments), transactions: live(transactions), payees: live(payees), history: live(history),
       settings: { ...DEFAULT_SETTINGS, ...s.data },
       settingsUpdatedAt: s.updatedAt,
     };

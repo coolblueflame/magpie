@@ -1,3 +1,4 @@
+import { roundHalfAway } from './money';
 import { addMonths, maxMonth, monthsBetween } from './month';
 import type { Cents, MonthKey } from './types';
 
@@ -26,7 +27,7 @@ export function categoryStats(activity: Map<MonthKey, Cents> | undefined, curren
   const avg = (from: MonthKey): Cents => {
     const span = monthsBetween(from, lastComplete);
     const sum = span.reduce((s, m) => s + (activity.get(m) ?? 0), 0);
-    return Math.round(sum / Math.max(1, span.length));
+    return roundHalfAway(sum / Math.max(1, span.length));
   };
   return {
     allTimeAvg: avg(firstMonth),
