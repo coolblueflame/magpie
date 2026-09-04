@@ -8,9 +8,11 @@ import type { YnabImport } from '../domain/ynab';
 import { fillPatches, type AssignmentPatch } from '../domain/goals';
 import { movePatches, type MoveEnd } from '../domain/moves';
 import { formatMoney } from '../domain/money';
+import { normalisePayeeKey } from '../domain/payees';
+import { fieldsFromDraft, type LineTarget, type TxDraft } from '../domain/transactions';
 import { nanoid } from 'nanoid';
 import { monthKeyOf } from '../domain/month';
-import type { Category, CategoryGroup, Cents, MonthKey, Row } from '../domain/types';
+import type { Category, CategoryGroup, Cents, ClearedState, MonthKey, Payee, Row, Transaction } from '../domain/types';
 import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
 import { Repo, type AppState, type Snapshot, type TableName } from '../storage/repo';
@@ -231,6 +233,107 @@ export class AppStore {
     const id = nanoid();
     await this.commitEdits([{ table, id, create: draft as Omit<Row, keyof Row> }], label);
     return this.mirrorOf(table).find((r) => r.id === id) as T;
+  }
+
+  // ── transactions and payees (phase 3b) ──────────────────────────────────
+
+  private accountsById(): Map<string, import('../domain/types').Account> {
+    return new Map(this.state.accounts.map((a) => [a.id, a]));
+  }
+
+  private transaction(id: string): Transaction {
+    const t = this.state.transactions.find((x) => x.id === id);
+    if (!t) throw new Error(`no transaction ${id}`);
+    return t;
+  }
+
+  /** An existing payee by name or alias, or the edit that creates one. Empty names resolve to no payee. */
+  ensurePayee(name: string): { id?: string; edits: Edit[] } {
+    const key = normalisePayeeKey(name);
+    if (!key) return { edits: [] };
+    const existing = this.state.payees.find((p) => normalisePayeeKey(p.name) === key || p.aliases.includes(key));
+    if (existing) return { id: existing.id, edits: [] };
+    const id = nanoid();
+    return { id, edits: [{ table: 'payees', id, create: { name: name.trim(), aliases: [], note: '' } }] };
+  }
+
+  /** The stored fields for a draft, with the payee resolved from typed text when given. */
+  private resolveDraft(draft: TxDraft, payeeName: string | undefined) {
+    const payee = payeeName === undefined ? { id: draft.payeeId, edits: [] as Edit[] } : this.ensurePayee(payeeName);
+    const fields = fieldsFromDraft({ ...draft, ...(payee.id ? { payeeId: payee.id } : { payeeId: undefined }) }, this.accountsById());
+    return { fields: { ...fields, payeeId: payee.id }, edits: payee.edits };
+  }
+
+  async addTransaction(draft: TxDraft, payeeName?: string): Promise<Transaction> {
+    const { fields, edits } = this.resolveDraft(draft, payeeName);
+    const id = nanoid();
+    edits.push({ table: 'transactions', id, create: { ...fields, source: { kind: 'manual', batchId: 'manual' } } });
+    await this.commitEdits(edits, 'add transaction');
+    return this.transaction(id);
+  }
+
+  async updateTransaction(id: string, draft: TxDraft, payeeName?: string): Promise<void> {
+    const { fields, edits } = this.resolveDraft(draft, payeeName);
+    edits.push({ table: 'transactions', id, patch: fields as Partial<Row> });
+    await this.commitEdits(edits, 'edit transaction');
+  }
+
+  deleteTransaction(id: string): Promise<void> {
+    return this.patchRow<Transaction>('transactions', id, { deleted: true }, 'delete transaction');
+  }
+
+  /** Cleared state for one side of a row: the owning account's, or a transfer's far side. */
+  setCleared(txId: string, accountId: string, cleared: ClearedState): Promise<void> {
+    const tx = this.transaction(txId);
+    const label = cleared === 'cleared' ? 'clear' : 'unclear';
+    if (tx.accountId === accountId) return this.patchRow<Transaction>('transactions', txId, { cleared }, label);
+    const lines = $state.snapshot(tx.lines).map((l) => (l.transferAccountId === accountId ? { ...l, farCleared: cleared } : l));
+    return this.patchRow<Transaction>('transactions', txId, { lines }, label);
+  }
+
+  /** The patch that confirms a `new` row with a target for its single line; throws if a budget line would still lack a category. */
+  private confirmPatch(tx: Transaction, target: LineTarget | undefined): Partial<Transaction> {
+    const draft: TxDraft = {
+      accountId: tx.accountId, date: tx.date, memo: tx.memo, cleared: tx.cleared,
+      outflow: tx.amount < 0 ? -tx.amount : 0, inflow: tx.amount > 0 ? tx.amount : 0,
+      split: tx.lines.length > 1,
+      target: target ?? (tx.lines[0]?.categoryId ? { type: 'category', categoryId: tx.lines[0].categoryId } : { type: 'none' }),
+      lines: tx.lines.length > 1 ? tx.lines.map((l) => ({ target: l.categoryId ? { type: 'category' as const, categoryId: l.categoryId } : { type: 'none' as const }, amount: l.amount, memo: l.memo })) : [],
+      ...(tx.payeeId ? { payeeId: tx.payeeId } : {}),
+    };
+    const fields = fieldsFromDraft(draft, this.accountsById());
+    if (fields.status !== 'ok') throw new Error('Pick a category first.');
+    return { lines: fields.lines, status: 'ok' };
+  }
+
+  async confirmTransaction(id: string, target?: LineTarget): Promise<void> {
+    await this.patchRow<Transaction>('transactions', id, this.confirmPatch(this.transaction(id), target), 'confirm transaction');
+  }
+
+  async confirmAll(items: { id: string; target?: LineTarget }[]): Promise<void> {
+    await this.patchRows<Transaction>('transactions',
+      items.map((i) => ({ id: i.id, patch: this.confirmPatch(this.transaction(i.id), i.target) })),
+      `confirm ${items.length} transactions`);
+  }
+
+  renamePayee(id: string, name: string): Promise<void> {
+    const p = this.state.payees.find((x) => x.id === id);
+    return this.patchRow<Payee>('payees', id, { name: name.trim() }, `rename ${p?.name ?? 'payee'}`);
+  }
+
+  /** Point every transaction of the merged payees at the survivor, keep their names as aliases, tombstone them. */
+  mergePayees(ids: string[], into: string): Promise<void> {
+    const others = ids.filter((id) => id !== into);
+    const survivor = this.state.payees.find((p) => p.id === into);
+    if (!survivor || !others.length) throw new Error('pick at least two payees');
+    const gone = this.state.payees.filter((p) => others.includes(p.id));
+    const aliases = [...new Set([...survivor.aliases, ...gone.flatMap((p) => [normalisePayeeKey(p.name), ...p.aliases])])];
+    const edits: Edit[] = this.state.transactions
+      .filter((t) => t.payeeId && others.includes(t.payeeId))
+      .map((t) => ({ table: 'transactions', id: t.id, patch: { payeeId: into } as Partial<Row> }));
+    edits.push({ table: 'payees', id: into, patch: { aliases } as Partial<Row> });
+    for (const p of gone) edits.push({ table: 'payees', id: p.id, patch: { deleted: true } });
+    return this.commitEdits(edits, `merge ${ids.length} payees`);
   }
 
   // ── budget management (phase 3a) ────────────────────────────────────────

@@ -4,6 +4,7 @@ import { undoStack } from './undo.svelte';
 import { seedData } from '../domain/seed';
 import { computeBudget } from '../domain/budget';
 import { RTA, type Category } from '../domain/types';
+import { draftFromTransaction, emptyDraft } from '../domain/transactions';
 import { buildYnabImport, readYnabPlan, readYnabRegister } from '../domain/ynab';
 import { PLAN_CSV, REGISTER_CSV } from '../domain/ynabFixture';
 
@@ -153,6 +154,74 @@ describe('AppStore', () => {
     expect(computeBudget({ ...s.state, currentMonth: m }, m).rta).toBe(400000 - 5000);
     expect(sum()).toBe(before);
     expect(await undoStack.undo()).toBe('move $50.00');
+  });
+
+  test('addTransaction with a new payee creates both; undo removes both', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    const draft = { ...emptyDraft('acc_card', '2026-09-06'), outflow: 1200, target: { type: 'category' as const, categoryId: 'cat_groc' } };
+    const tx = await s.addTransaction(draft, 'Corner Shop');
+    const payee = s.state.payees.find((p) => p.name === 'Corner Shop')!;
+    expect(tx).toMatchObject({ amount: -1200, status: 'ok', payeeId: payee.id, source: { kind: 'manual' } });
+    expect(await undoStack.undo()).toBe('add transaction');
+    expect(s.state.transactions.some((t) => t.id === tx.id)).toBe(false);
+    expect(s.state.payees.some((p) => p.id === payee.id)).toBe(false);
+    await undoStack.redo();
+    expect(s.state.transactions.some((t) => t.id === tx.id)).toBe(true);
+    expect(s.state.payees.some((p) => p.id === payee.id)).toBe(true);
+    // An existing payee is reused by name or alias, case-insensitively.
+    const again = await s.addTransaction(draft, ' grocer ');
+    expect(again.payeeId).toBe('pay_grocer');
+  });
+
+  test('updateTransaction to a split, deleteTransaction, and the far-side cleared toggle', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    const d = draftFromTransaction(s.state.transactions.find((t) => t.id === 'seed_t13')!);
+    await s.updateTransaction('seed_t13', { ...d, split: true, lines: [
+      { target: { type: 'category', categoryId: 'cat_groc' }, amount: -10000, memo: '' },
+      { target: { type: 'category', categoryId: 'cat_fun' }, amount: -2345, memo: '' },
+    ] });
+    expect(s.state.transactions.find((t) => t.id === 'seed_t13')!.lines).toHaveLength(2);
+    await undoStack.undo();
+    expect(s.state.transactions.find((t) => t.id === 'seed_t13')!.lines).toHaveLength(1);
+
+    await s.deleteTransaction('seed_t13');
+    expect(s.state.transactions.some((t) => t.id === 'seed_t13')).toBe(false);
+    await undoStack.undo();
+    expect(s.state.transactions.some((t) => t.id === 'seed_t13')).toBe(true);
+
+    await s.setCleared('seed_t10', 'acc_card', 'uncleared');
+    expect(s.state.transactions.find((t) => t.id === 'seed_t10')!.lines[0]!.farCleared).toBe('uncleared');
+    expect(s.state.transactions.find((t) => t.id === 'seed_t10')!.cleared).toBe('cleared');
+    await s.setCleared('seed_t10', 'acc_chq', 'uncleared');
+    expect(s.state.transactions.find((t) => t.id === 'seed_t10')!.cleared).toBe('uncleared');
+  });
+
+  test('confirmTransaction needs a category; confirmAll is one entry', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    await expect(s.confirmTransaction('seed_t14')).rejects.toThrow(/category/);
+    await s.confirmTransaction('seed_t14', { type: 'category', categoryId: 'cat_fun' });
+    expect(s.state.transactions.find((t) => t.id === 'seed_t14')).toMatchObject({ status: 'ok', lines: [{ categoryId: 'cat_fun', amount: -4200, memo: '' }] });
+    await s.confirmAll([{ id: 'seed_t15', target: { type: 'category', categoryId: 'cat_groc' } }]);
+    expect(s.state.transactions.filter((t) => t.status === 'new')).toHaveLength(0);
+    expect(await undoStack.undo()).toBe('confirm 1 transactions');
+    expect(s.state.transactions.find((t) => t.id === 'seed_t15')!.status).toBe('new');
+  });
+
+  test('mergePayees repoints transactions, keeps aliases, and undoes as one', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    await s.mergePayees(['pay_arcade', 'pay_mystery'], 'pay_arcade');
+    expect(s.state.payees.some((p) => p.id === 'pay_mystery')).toBe(false);
+    expect(s.state.payees.find((p) => p.id === 'pay_arcade')!.aliases).toEqual(['mystery']);
+    expect(s.state.transactions.find((t) => t.id === 'seed_t14')!.payeeId).toBe('pay_arcade');
+    expect(await undoStack.undo()).toBe('merge 2 payees');
+    expect(s.state.payees.some((p) => p.id === 'pay_mystery')).toBe(true);
+    expect(s.state.transactions.find((t) => t.id === 'seed_t14')!.payeeId).toBe('pay_mystery');
+    expect(s.state.payees.find((p) => p.id === 'pay_arcade')!.aliases).toEqual([]);
+    expect(s.ensurePayee('MYSTERY').id).toBe('pay_mystery');
   });
 
   test('setAssigned creates a row where none existed and undo removes it', async () => {

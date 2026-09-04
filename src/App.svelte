@@ -7,6 +7,13 @@
   import BudgetView from './lib/ui/BudgetView.svelte';
   import SettingsView from './lib/ui/SettingsView.svelte';
   import ImportView from './lib/ui/ImportView.svelte';
+  import AccountsView from './lib/ui/AccountsView.svelte';
+  import LedgerView from './lib/ui/LedgerView.svelte';
+  import ReviewView from './lib/ui/ReviewView.svelte';
+  import PayeesView from './lib/ui/PayeesView.svelte';
+
+  const onBudgetIds = $derived(new Set(app.state.accounts.filter((a) => a.onBudget).map((a) => a.id)));
+  const reviewCount = $derived(app.state.transactions.filter((t) => t.status === 'new' && onBudgetIds.has(t.accountId)).length);
   import UndoToast from './lib/ui/UndoToast.svelte';
 
   // Global undo/redo. A focused input owns its own Ctrl+Z, so skip when one is active.
@@ -30,6 +37,9 @@
   <nav>
     <span class="brand">Magpie</span>
     <button data-testid="nav-budget" onclick={() => navigate({ name: 'budget' })}>Budget</button>
+    <button data-testid="nav-accounts" onclick={() => navigate({ name: 'accounts' })}>Accounts</button>
+    <button data-testid="nav-review" onclick={() => navigate({ name: 'review' })}>Review{#if reviewCount} <span class="badge" data-testid="nav-review-count">{reviewCount}</span>{/if}</button>
+    <button data-testid="nav-payees" onclick={() => navigate({ name: 'payees' })}>Payees</button>
     <button data-testid="nav-import" onclick={() => navigate({ name: 'import' })}>Import</button>
     <button data-testid="nav-settings" onclick={() => navigate({ name: 'settings' })}>Settings</button>
   </nav>
@@ -37,6 +47,14 @@
     <SettingsView />
   {:else if router.current.name === 'import'}
     <ImportView />
+  {:else if router.current.name === 'accounts'}
+    <AccountsView />
+  {:else if router.current.name === 'account'}
+    {#key router.current.id}<LedgerView id={router.current.id} />{/key}
+  {:else if router.current.name === 'review'}
+    <ReviewView />
+  {:else if router.current.name === 'payees'}
+    <PayeesView />
   {:else}
     <BudgetView />
   {/if}
@@ -46,5 +64,6 @@
 <style>
   nav { display: flex; align-items: center; gap: 8px; padding: 10px 24px; border-bottom: 1px solid var(--line); background: var(--bg1); }
   .brand { color: var(--blue); font-weight: 700; margin-right: 12px; }
+  .badge { background: var(--amber); color: var(--bg0); border-radius: 999px; padding: 0 6px; font-size: 0.8rem; font-weight: 600; }
   .boot { color: var(--dim); padding: 24px; }
 </style>
