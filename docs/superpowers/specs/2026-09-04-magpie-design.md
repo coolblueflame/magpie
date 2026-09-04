@@ -68,8 +68,10 @@ positive**, in every row and every function; formatting happens at the UI edge.
 
 **CategoryGroup** `{ id, name, sortOrder, hidden }`
 
-**Category** `{ id, groupId, name, goal, sortOrder, hidden, note }`
+**Category** `{ id, groupId, name, goal, sortOrder, hidden, note, carriedIn? }`
 - `goal`: monthly goal in cents, 0 when unset.
+- `carriedIn`: the available amount YNAB carried into the cutover month, set by the YNAB
+  import (§4.1); absent for categories created after cutover.
 - The reserved id `rta` is Ready to Assign. Income lines target it. It has no group and is
   never listed as a category.
 
@@ -136,9 +138,9 @@ available(c, m) = m < cutover ? ynabHistory(c, m).available
 available(c, cutover − 1) = anchor(c)
 ```
 
-`anchor(c)` is what YNAB carried into the cutover month, derived at import as
-`ynabAvailable(c, cutover) − ynabAssigned(c, cutover) − ynabActivity(c, cutover)` so the
-cutover month matches YNAB to the penny on day one. From then on the Magpie rule applies and
+`anchor(c)` is `Category.carriedIn`: what YNAB carried into the cutover month, derived at
+import as `ynabAvailable(c, cutover) − ynabAssigned(c, cutover) − ynabActivity(c, cutover)`
+so the cutover month matches YNAB to the penny on day one. From then on the Magpie rule applies and
 negatives carry. Months with no rows are computed, not stored; future months compute the same
 way (assignments may exist, activity is zero).
 
