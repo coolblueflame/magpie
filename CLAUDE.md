@@ -186,7 +186,9 @@ its *algorithm*, never its arithmetic. Money in the app is integer cents.
 ## Build discipline
 
 `npm run dev` serves `http://localhost:5173/magpie/`. Settings → Load sample data seeds an
-empty database (the e2e specs set `localStorage['magpie:seed']='1'` before boot instead).
+empty database (the e2e specs set `localStorage['magpie:seed']='1'` before boot instead);
+`#/import` takes a YNAB export into an empty database. Real files live in `private/`; to
+check the importer against them without the UI: `npx vite-node private/verify-ynab.ts <Register.csv> <Plan.csv>`.
 `@playwright/test` is pinned exact to match the chromium build already in
 `~/Library/Caches/ms-playwright`; bumping it means a browser download outside the project,
 which needs Ben's go-ahead.

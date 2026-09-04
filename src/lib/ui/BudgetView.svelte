@@ -18,9 +18,10 @@
     { ...$state.snapshot(app.state), currentMonth: app.currentMonth, cutoverMonth: app.state.settings.cutoverMonth },
     month,
   ));
-  const groups = $derived([...app.state.groups].filter((g) => !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
+  let showHidden = $state(false);
+  const groups = $derived([...app.state.groups].filter((g) => showHidden || !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
   const categoriesOf = (groupId: string) =>
-    app.state.categories.filter((c) => c.groupId === groupId && !c.hidden).sort((a, b) => a.sortOrder - b.sortOrder);
+    app.state.categories.filter((c) => c.groupId === groupId && (showHidden || !c.hidden)).sort((a, b) => a.sortOrder - b.sortOrder);
 
   let editing = $state<string | null>(null);
   let draft = $state('');
@@ -44,6 +45,7 @@
     <button data-testid="month-prev" onclick={() => navigate({ name: 'budget', month: addMonths(month, -1) })}>‹</button>
     <h2 data-testid="month-label">{monthLabel(month)}</h2>
     <button data-testid="month-next" onclick={() => navigate({ name: 'budget', month: addMonths(month, 1) })}>›</button>
+    <label class="toggle"><input type="checkbox" data-testid="show-hidden" bind:checked={showHidden} /> Show hidden</label>
     <div class="rta">
       <span class="label">Ready to Assign</span>
       <span class={cls(budget.rta)} data-testid="rta">{formatMoney(budget.rta)}</span>
@@ -58,10 +60,10 @@
     </thead>
     <tbody>
       {#each groups as g (g.id)}
-        <tr class="group" data-testid={`group-${g.id}`}><td colspan="5">{g.name}</td></tr>
+        <tr class="group" class:hidden={g.hidden} data-testid={`group-${g.id}`}><td colspan="5">{g.name}</td></tr>
         {#each categoriesOf(g.id) as c (c.id)}
           {@const row = budget.rows.get(c.id)}
-          <tr data-testid={`cat-row-${c.id}`}>
+          <tr class:hidden={c.hidden} data-testid={`cat-row-${c.id}`}>
             <td>{c.name}</td>
             <td class="money" data-testid={`goal-${c.id}`}>{formatMoney(c.goal)}</td>
             <td class="money">
@@ -90,6 +92,8 @@
   h2 { margin: 0; min-width: 120px; text-align: center; }
   .rta { margin-left: auto; display: flex; align-items: baseline; gap: 10px; }
   .rta .label { color: var(--dim); }
+  .toggle { color: var(--dim); font-size: 0.85rem; margin-left: 12px; display: flex; align-items: center; gap: 4px; }
+  tr.hidden td { color: var(--dim); font-style: italic; }
   .rta .money { font-size: 1.4rem; }
   .chip { background: var(--bg2); border: 1px solid var(--amber); color: var(--amber); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; }
   table { width: 100%; border-collapse: collapse; }

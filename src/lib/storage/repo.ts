@@ -11,8 +11,8 @@ import { nanoid } from 'nanoid';
 import type { Table } from 'dexie';
 import {
   assignmentId, DEFAULT_SETTINGS,
-  type Account, type Assignment, type Category, type CategoryGroup, type Cents, type MonthKey,
-  type Row, type Settings, type Transaction, type YnabHistory,
+  type Account, type Assignment, type Category, type CategoryGroup, type Cents, type CsvProfile, type MonthKey,
+  type Payee, type Row, type Settings, type ShareClaim, type Transaction, type YnabHistory,
 } from '../domain/types';
 import type { MagpieDb } from './db';
 
@@ -29,6 +29,20 @@ export interface AppState {
   history: YnabHistory[];
   settings: Settings;
   /** Merge key for the settings singleton; 0 = never written. */
+  settingsUpdatedAt: number;
+}
+
+export interface Snapshot {
+  accounts: Account[];
+  groups: CategoryGroup[];
+  categories: Category[];
+  assignments: Assignment[];
+  transactions: Transaction[];
+  payees: Payee[];
+  claims: ShareClaim[];
+  profiles: CsvProfile[];
+  history: YnabHistory[];
+  settings: Partial<Settings>;
   settingsUpdatedAt: number;
 }
 
@@ -133,6 +147,27 @@ export class Repo {
       await this.db.kv.put({ key: 'settings', value: { data: { ...prior.data, ...patch }, updatedAt } });
       return updatedAt;
     });
+  }
+
+  /** Every row of every table, tombstones included, plus sparse settings: the JSON export and, later, sync. */
+  async loadSnapshot(): Promise<Snapshot> {
+    const [accounts, groups, categories, assignments, transactions, payees, claims, profiles, history, settingsRow] = await Promise.all([
+      this.db.accounts.toArray(), this.db.groups.toArray(), this.db.categories.toArray(), this.db.assignments.toArray(),
+      this.db.transactions.toArray(), this.db.payees.toArray(), this.db.claims.toArray(), this.db.profiles.toArray(),
+      this.db.history.toArray(), this.db.kv.get('settings'),
+    ]);
+    const s = (settingsRow?.value ?? { data: {}, updatedAt: 0 }) as Stamped<Partial<Settings>>;
+    return { accounts, groups, categories, assignments, transactions, payees, claims, profiles, history, settings: s.data, settingsUpdatedAt: s.updatedAt };
+  }
+
+  /** Write settings and their stamp exactly as given: a backup restore keeps the merge key it had. */
+  async restoreSettings(data: Partial<Settings>, updatedAt: number): Promise<void> {
+    await this.db.kv.put({ key: 'settings', value: { data: { ...data }, updatedAt } });
+  }
+
+  /** Drop the whole database. The caller must open a fresh one afterwards. */
+  async deleteDatabase(): Promise<void> {
+    await this.db.delete();
   }
 
   /** Bulk write of already-stamped rows across tables, all or nothing. */

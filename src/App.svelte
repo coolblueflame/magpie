@@ -6,6 +6,7 @@
   import { navigate, router } from './lib/ui/router.svelte';
   import BudgetView from './lib/ui/BudgetView.svelte';
   import SettingsView from './lib/ui/SettingsView.svelte';
+  import ImportView from './lib/ui/ImportView.svelte';
   import UndoToast from './lib/ui/UndoToast.svelte';
 
   // Global undo/redo. A focused input owns its own Ctrl+Z, so skip when one is active.
@@ -29,10 +30,13 @@
   <nav>
     <span class="brand">Magpie</span>
     <button data-testid="nav-budget" onclick={() => navigate({ name: 'budget' })}>Budget</button>
+    <button data-testid="nav-import" onclick={() => navigate({ name: 'import' })}>Import</button>
     <button data-testid="nav-settings" onclick={() => navigate({ name: 'settings' })}>Settings</button>
   </nav>
   {#if router.current.name === 'settings'}
     <SettingsView />
+  {:else if router.current.name === 'import'}
+    <ImportView />
   {:else}
     <BudgetView />
   {/if}
