@@ -185,8 +185,11 @@ its *algorithm*, never its arithmetic. Money in the app is integer cents.
 
 ## Build discipline
 
-None of these commands exist here yet; they are the target from `docs/PLAYBOOK.md` §2.1 /
-§2.14 and the shape to scaffold toward. Update this section the moment the scaffold lands.
+`npm run dev` serves `http://localhost:5173/magpie/`. Settings → Load sample data seeds an
+empty database (the e2e specs set `localStorage['magpie:seed']='1'` before boot instead).
+`@playwright/test` is pinned exact to match the chromium build already in
+`~/Library/Caches/ms-playwright`; bumping it means a browser download outside the project,
+which needs Ben's go-ahead.
 
 - Gates before every commit, in order: `npm run check` → `npx vitest run` →
   `npx playwright test`. Re-run from the top after the last edit; vitest does not typecheck

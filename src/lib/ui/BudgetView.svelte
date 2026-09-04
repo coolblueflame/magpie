@@ -94,6 +94,7 @@
   .chip { background: var(--bg2); border: 1px solid var(--amber); color: var(--amber); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--dim); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+  th.money { text-align: right; }
   td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
   tr.group td { background: var(--bg1); color: var(--blue); font-weight: 600; padding-top: 12px; }
   .cell { border: none; padding: 0; width: 100%; text-align: right; font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
