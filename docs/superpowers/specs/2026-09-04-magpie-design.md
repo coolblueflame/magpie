@@ -160,6 +160,10 @@ and RTA. A `new` transaction moves value into `uncategorised` until it is confir
 does not jump during import review; the budget header shows the uncategorised total while
 it is non-zero.
 
+The YNAB export carries no goals, so a category with no goal shows a **suggested goal**: the
+most frequent non-zero amount assigned to it in the last twelve months (tie: the most
+recent), adoptable in one click, per category or all at once.
+
 Filling a category's goal for month `m` sets `assigned(c, m) = goal` (no-op if already at
 or above goal). A "fill all goals" action does this for every visible category in the
 month, each to its own goal, and shows the total it will take from Ready to Assign before

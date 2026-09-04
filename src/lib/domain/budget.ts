@@ -30,6 +30,8 @@ export interface BudgetMonth {
   onBudgetTotal: Cents;
   /** The later of the current month and the last month anything is assigned to. */
   horizon: MonthKey;
+  /** Budget-effect activity per category per month, all time; feeds the stats columns. */
+  activityByCategory: Map<string, Map<MonthKey, Cents>>;
 }
 
 const key = (categoryId: string, month: MonthKey) => `${categoryId}|${month}`;
@@ -47,7 +49,7 @@ const key = (categoryId: string, month: MonthKey) => `${categoryId}|${month}`;
 export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth {
   const accountsById = new Map(input.accounts.map((a) => [a.id, a]));
 
-  const activity = new Map<string, Cents>();
+  const activityByCategory = new Map<string, Map<MonthKey, Cents>>();
   let uncategorised = 0;
   let earliest: MonthKey | undefined;
   for (const tx of input.transactions) {
@@ -60,8 +62,9 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
       if (!needsCategory(line, own, far)) continue;
       const effect = lineEffect(line, own, far);
       if (line.categoryId) {
-        const k = key(line.categoryId, m);
-        activity.set(k, (activity.get(k) ?? 0) + effect);
+        let byMonth = activityByCategory.get(line.categoryId);
+        if (!byMonth) { byMonth = new Map(); activityByCategory.set(line.categoryId, byMonth); }
+        byMonth.set(m, (byMonth.get(m) ?? 0) + effect);
         earliest = earliest ? minMonth(earliest, m) : m;
       } else {
         uncategorised += effect;
@@ -96,7 +99,7 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
     let available = input.cutoverMonth ? (c.carriedIn ?? 0) : 0;
     for (const m of monthsBetween(start, end)) {
       const asg = assigned.get(key(c.id, m)) ?? 0;
-      const act = activity.get(key(c.id, m)) ?? 0;
+      const act = activityByCategory.get(c.id)?.get(m) ?? 0;
       available += asg + act;
       if (m === month && !rows.has(c.id)) rows.set(c.id, { categoryId: c.id, month, assigned: asg, activity: act, available });
       if (m === horizon) sumAtHorizon += available;
@@ -109,5 +112,5 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
     if (accountsById.get(id)?.onBudget) onBudgetTotal += b.working;
   }
 
-  return { month, rows, rta: onBudgetTotal - sumAtHorizon - uncategorised, uncategorised, onBudgetTotal, horizon };
+  return { month, rows, rta: onBudgetTotal - sumAtHorizon - uncategorised, uncategorised, onBudgetTotal, horizon, activityByCategory };
 }

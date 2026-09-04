@@ -38,6 +38,7 @@ describe('availability rollover', () => {
     expect(computeBudget(input, '2026-07').rows.get('groc')!.available).toBe(-5000);
     expect(computeBudget(input, '2026-08').rows.get('groc')!.available).toBe(5000);
     expect(computeBudget(input, '2026-09').rows.get('groc')!.available).toBe(5000);
+    expect(computeBudget(input, '2026-09').activityByCategory).toEqual(new Map([['groc', new Map([['2026-07', -15000]])]]));
   });
   test('activity is the budget effect of lines, so off-budget rows and on-on transfers are ignored', () => {
     const input = base({
