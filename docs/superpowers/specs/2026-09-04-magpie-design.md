@@ -60,11 +60,13 @@ via `nextStamp`, tombstones never hard deletes, deterministic ids where two devi
 mint the same logical row. All amounts are integer cents, **outflows negative, inflows
 positive**, in every row and every function; formatting happens at the UI edge.
 
-**Account** `{ id, name, kind, onBudget, closed, sortOrder, note }`
+**Account** `{ id, name, kind, onBudget, closed, sortOrder, note, externalRef? }`
 - `kind`: `chequing | savings | credit | cash | person | loan | investment | other`.
 - `onBudget`: money that belongs to the budget. `person` accounts are on-budget (a receivable
   is money you have). `loan`, `investment` and other tracking accounts are off-budget.
 - Balance is derived: own transactions plus incoming transfer lines (§4.3).
+- `externalRef`: a hash of the statement file's account identifier, so the next file from the
+  same account preselects it. The identifier itself is never stored.
 
 **CategoryGroup** `{ id, name, sortOrder, hidden }`
 
@@ -107,9 +109,10 @@ Line: { categoryId?, transferAccountId?, amount, memo,
   other. The category to pre-fill is derived at use time: the most recent `ok` transaction
   of this payee in an on-budget account with a single category line.
 
-**ShareClaim** `{ id, date, total, percent, description, status, transactionId? }`
-- From the shared-sheet import, rows where Ben paid. `id` is a stable hash of the source row.
-  `status`: `open | applied | dismissed`. `percent` is the partner's share.
+**ShareClaim** `{ id, date, total, paid, percent, description, categoryHint?, status, transactionId? }`
+- From the shared-sheet import, rows where Ben paid something. `total` is what both people
+  paid together, `paid` Ben's own payment (the bank amount to match), `percent` the partner's
+  share. `id` is a stable hash of the source row. `status`: `open | applied | dismissed`.
 
 **CsvProfile** `{ id, headerSignature, name, mapping, dateFormat, amountMode }`
 - `headerSignature` is the normalised header row; `mapping` names the date, payee, memo, id
@@ -119,8 +122,8 @@ Line: { categoryId?, transferAccountId?, amount, memo,
 **YnabHistory** `{ id: "yh_<categoryId>_<YYYY-MM>", categoryId, month, assigned,
 activity, available }` for months before cutover, display-only (§4.1). Static after import.
 
-**Settings** (kv table, sparse per PB §2.3): `cutoverMonth`, `currency` (CAD), theme, sync
-config. The GitHub token lives in a separate device-local table and never syncs.
+**Settings** (kv table, sparse per PB §2.3): `cutoverMonth`, `currency` (CAD), `sheet` (which
+"Paid" column is the user's and the partner's person account), theme, sync config. The GitHub token lives in a separate device-local table and never syncs.
 
 ## 4. Core rules
 
@@ -192,9 +195,11 @@ transaction; it never strips one elsewhere.
 The partner is a `person` account (imported from its YNAB account; its history stays as it
 was). Rules:
 
-- Ben pays, partner share `p`%: the bank transaction is split into a category line for
-  `total − share` and a transfer line to the person account for `share`, where
-  `share = round_half_up(total × p / 100)` and the category line is the exact remainder.
+- General rule for a shared row with total `T` (what both paid together), Ben's payment `X`
+  and partner share `p`%: partner share `S = roundHalfAway(T × p / 100)`, Ben's share `T − S`.
+  Ben's bank transaction of `−X` splits into a category line for `−(T − S)` and a transfer
+  line to the person account for `−(X − (T − S))` (positive when Ben paid less than his
+  share). With `X = T` this is the simple case: category `−(T − S)`, transfer `−S`.
 - Partner pays: a transaction in the person account for Ben's share, categorised, no bank
   account involved.
 - Settling up is a transfer between a bank account and the person account.

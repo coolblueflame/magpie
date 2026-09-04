@@ -131,7 +131,8 @@
   .editor { background: var(--bg1); border: 1px solid var(--blue-deep); border-radius: 8px; padding: 12px; display: grid; gap: 10px; text-align: left; font-size: 0.95rem; }
   .note { margin: 0; color: var(--amber); }
   .grid { display: grid; grid-template-columns: 150px 1fr 120px 120px; gap: 10px 14px; align-items: end; }
-  label { display: grid; gap: 3px; color: var(--dim); }
+  label { display: grid; gap: 3px; color: var(--dim); min-width: 0; }
+  .grid input { width: 100%; min-width: 0; }
   label.wide { grid-column: 1 / 3; }
   label.check { display: flex; align-items: center; gap: 6px; }
   .money { text-align: right; font-family: var(--font-mono); }

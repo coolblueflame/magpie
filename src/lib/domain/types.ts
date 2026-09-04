@@ -27,6 +27,8 @@ export interface Account extends Row {
   closed: boolean;
   sortOrder: number;
   note: string;
+  /** Hash of the bank's own account identifier from a statement file, so the next file preselects this account. Never the number itself. */
+  externalRef?: string;
 }
 
 export interface CategoryGroup extends Row {
@@ -108,11 +110,19 @@ export interface Payee extends Row {
   note: string;
 }
 
+/**
+ * A shared-expense row the user paid, waiting for its bank transaction
+ * (spec §4.4, §5.4). `total` is what both people paid together, `paid` the
+ * user's own payment (the bank amount to match), `percent` the partner's share.
+ */
 export interface ShareClaim extends Row {
   date: IsoDate;
   total: Cents;
+  paid: Cents;
   percent: number;
   description: string;
+  /** Free text from the sheet's category column, used to pre-fill. */
+  categoryHint?: string;
   status: 'open' | 'applied' | 'dismissed';
   transactionId?: string;
 }
@@ -126,6 +136,8 @@ export interface CsvProfile extends Row {
   };
   dateFormat: string;
   amountMode: 'signed' | 'outflow-inflow' | 'negate';
+  /** The account files with this header usually belong to. */
+  accountId?: string;
 }
 
 /** YNAB's own numbers for months before cutover; display-only (spec §4.1). */
@@ -144,6 +156,8 @@ export function ynabHistoryId(categoryId: string, month: MonthKey): string {
 export interface Settings {
   cutoverMonth?: MonthKey;
   currency: string;
+  /** Shared-sheet import answers: which "Paid" column is the user's, and the partner's person account. */
+  sheet?: { mineFirst: boolean; personAccountId: string };
 }
 
 export const DEFAULT_SETTINGS: Settings = { currency: 'CAD' };
