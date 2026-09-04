@@ -1,0 +1,36 @@
+/*
+ * Magpie theme tokens: the only place colours are defined. A magpie's palette:
+ * black with a blue tint for the ground, white for text, the wing's blue sheen
+ * and the tail's teal iridescence for accents, greys for structure.
+ * Every colour in the app references these variables.
+ */
+:root {
+  --bg0: #0a0d12;   /* app ground: black with a blue tint */
+  --bg1: #10151d;   /* panels, table rows */
+  --bg2: #182029;   /* raised elements, inputs */
+  --line: #223040;  /* hairlines */
+  --text: #eef3f8;  /* magpie white */
+  --dim: #8c9bab;   /* secondary text */
+  --blue: #6fb7ff;  /* primary accent, the wing sheen */
+  --blue-deep: #2f6fd6;
+  --teal: #4fd1c5;  /* the tail iridescence; positive money */
+  --amber: #f0b45a; /* warnings */
+  --red: #ff7b72;   /* negative money */
+  --font-sans: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body {
+  background: var(--bg0);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+button { font: inherit; color: var(--text); background: none; border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
+button:hover { border-color: var(--blue); }
+input { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+input:focus { outline: 1px solid var(--blue); border-color: var(--blue); }
+.money { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; }
+.money.neg { color: var(--red); }
+.money.pos { color: var(--teal); }
