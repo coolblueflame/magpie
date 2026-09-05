@@ -1,5 +1,7 @@
 # Magpie
 
+**Use it:** https://coolblueflame.github.io/magpie/ (installable as a web app; your data stays in your browser)
+
 Magpie is a personal budgeting app that runs entirely in your browser. You give every dollar
 a category, the categories carry their balances from month to month, and the transactions
 come from statement files you download from your bank yourself. There is no server, no bank
