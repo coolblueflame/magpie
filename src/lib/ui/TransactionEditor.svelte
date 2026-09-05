@@ -6,9 +6,10 @@
   import CategoryPicker from './CategoryPicker.svelte';
   import { focusOnMount } from './focusOnMount';
 
-  let { draft: initial, payeeName: initialPayee = '', note = '', onSave, onCancel, onDelete }: {
-    draft: TxDraft; payeeName?: string; note?: string;
-    onSave: (draft: TxDraft, payeeName: string) => void | Promise<void>; onCancel: () => void; onDelete?: () => void;
+  let { draft: initial, payeeName: initialPayee = '', note = '', shared: initialShared = null, onSave, onCancel, onDelete }: {
+    draft: TxDraft; payeeName?: string; note?: string; shared?: { accountId: string; percent: number } | null;
+    onSave: (draft: TxDraft, payeeName: string, shared: { accountId: string; percent: number } | null) => void | Promise<void>;
+    onCancel: () => void; onDelete?: () => void;
   } = $props();
 
   // The editor is mounted per edit, so capturing the initial props is the intent.
@@ -23,6 +24,17 @@
   // svelte-ignore state_referenced_locally
   let lineText = $state<string[]>(initial.lines.map((l) => formatCents(Math.abs(l.amount))));
   let error = $state('');
+  // svelte-ignore state_referenced_locally
+  let sharedPerson = $state(initialShared?.accountId ?? '');
+  // svelte-ignore state_referenced_locally
+  let sharedPercent = $state(initialShared ? String(initialShared.percent) : '');
+  const personAccounts = $derived(app.state.accounts.filter((a) => a.kind === 'person' && !a.closed));
+  const canShare = $derived(() => { const a = app.state.accounts.find((x) => x.id === d.accountId); return !!a?.onBudget && a.kind !== 'person' && personAccounts.length > 0; });
+  const sharedChoice = $derived.by((): { accountId: string; percent: number } | null => {
+    if (!canShare() || !sharedPerson) return null;
+    const p = Number(sharedPercent);
+    return Number.isFinite(p) && p > 0 && p <= 100 ? { accountId: sharedPerson, percent: p } : null;
+  });
 
   const total = $derived((parseCents(inflow || '0') ?? 0) - (parseCents(outflow || '0') ?? 0));
   const sign = $derived(total < 0 ? -1 : 1);
@@ -62,7 +74,7 @@
   async function save() {
     error = '';
     try {
-      await onSave({ ...$state.snapshot(d), outflow: total < 0 ? -total : 0, inflow: total > 0 ? total : 0 }, payee.trim());
+      await onSave({ ...$state.snapshot(d), outflow: total < 0 ? -total : 0, inflow: total > 0 ? total : 0 }, payee.trim(), sharedChoice ?? (initialShared ? null : undefined) as never);
     } catch (e) { error = (e as Error).message; }
   }
   function onKey(e: KeyboardEvent) {
@@ -117,6 +129,20 @@
       </tbody>
     </table>
   {/if}
+  {#if canShare()}
+    <div class="shared">
+      <label>Shared with
+        <select data-testid="ed-shared-person" bind:value={sharedPerson}>
+          <option value="">Not shared</option>
+          {#each personAccounts as p (p.id)}<option value={p.id}>{p.name}</option>{/each}
+        </select>
+      </label>
+      {#if sharedPerson}
+        <label>Their share % <input data-testid="ed-shared-percent" class="money" bind:value={sharedPercent} onkeydown={onKey} /></label>
+        <span class="dim">Saving re-derives the lines: your share to the category, the rest to {personAccounts.find((p) => p.id === sharedPerson)?.name}.</span>
+      {/if}
+    </div>
+  {/if}
   <div class="actions">
     <button data-testid="ed-split" onclick={toggleSplit}>{d.split ? 'Unsplit' : 'Split'}</button>
     <span class="spacer"></span>
@@ -137,6 +163,9 @@
   label.check { display: flex; align-items: center; gap: 6px; }
   .money { text-align: right; font-family: var(--font-mono); }
   .target { display: flex; gap: 14px; }
+  .shared { display: flex; gap: 14px; align-items: end; }
+  .shared select { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; padding: 3px 6px; }
+  .shared .dim { color: var(--dim); font-size: 0.85rem; }
   .lines { border-collapse: collapse; }
   .lines td { padding: 3px 6px 3px 0; }
   .remainder { margin-left: 12px; color: var(--teal); font-family: var(--font-mono); }

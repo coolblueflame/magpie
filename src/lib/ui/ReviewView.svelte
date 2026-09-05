@@ -22,6 +22,28 @@
   const prefilled = $derived(items.filter((t) => !picks[t.id] && prefill(t.payeeId).type !== 'none'));
   const payeeName = (pid?: string) => (pid ? app.state.payees.find((p) => p.id === pid)?.name ?? '' : '');
   const accountName = (aid: string) => accountsById.get(aid)?.name ?? '';
+
+  // Open share claims (spec §5.4): rows the user paid on the shared sheet that no bank row has claimed yet.
+  const openClaims = $derived(app.state.claims.filter((c) => c.status === 'open').sort((a, b) => (a.date < b.date ? -1 : 1)));
+  const personAccountId = $derived(app.state.settings.sheet?.personAccountId ?? '');
+  const dayDiff = (a: string, b: string) => Math.abs((Date.parse(a) - Date.parse(b)) / 86400000);
+  const candidatesFor = (claim: { paid: number; date: string }) => app.state.transactions
+    .filter((t) => {
+      const a = accountsById.get(t.accountId);
+      return a?.onBudget && a.kind !== 'person' && t.lines.length === 1 && !t.lines[0]!.transferAccountId && !t.shared && t.amount === -claim.paid && dayDiff(t.date, claim.date) <= 45;
+    })
+    .sort((a, b) => dayDiff(a.date, claim.date) - dayDiff(b.date, claim.date));
+  let claimPicks = $state<Record<string, string>>({});
+  async function applyClaim(id: string) {
+    const txId = claimPicks[id] ?? candidatesFor(openClaims.find((c) => c.id === id)!)[0]?.id;
+    if (!txId || !personAccountId) return;
+    await app.applyClaim(id, txId, personAccountId);
+    toast.show('Applied shared claim', () => void undoStack.undo());
+  }
+  async function dismissClaim(id: string) {
+    await app.dismissClaim(id);
+    toast.show('Dismissed claim', () => void undoStack.undo());
+  }
   let error = $state('');
   let armed = $state(false);
   let armTimer: ReturnType<typeof setTimeout> | undefined;
@@ -55,6 +77,34 @@
     {/if}
   </header>
   {#if error}<p class="error" data-testid="rv-error">{error}</p>{/if}
+  {#if openClaims.length}
+    <h3>Shared claims <span class="dim" data-testid="claim-count">{openClaims.length} waiting for a bank row</span></h3>
+    <table class="claims">
+      <thead><tr><th>Date</th><th>Description</th><th class="money">You paid</th><th class="money">Their share</th><th>Bank row</th><th></th></tr></thead>
+      <tbody>
+        {#each openClaims as c (c.id)}
+          {@const cands = candidatesFor(c)}
+          <tr data-testid={`claim-${c.id}`}>
+            <td class="date">{c.date}</td>
+            <td>{c.description}{#if c.categoryHint} <span class="dim">· {c.categoryHint}</span>{/if}</td>
+            <td class="money">{formatMoney(c.paid)}</td>
+            <td class="money">{c.percent}%</td>
+            <td>
+              {#if cands.length}
+                <select data-testid={`claim-pick-${c.id}`} value={claimPicks[c.id] ?? cands[0]!.id} onchange={(e) => (claimPicks[c.id] = e.currentTarget.value)}>
+                  {#each cands as t (t.id)}<option value={t.id}>{t.date} · {accountName(t.accountId)} · {payeeName(t.payeeId) || t.memo}</option>{/each}
+                </select>
+              {:else}<span class="dim">no matching row yet</span>{/if}
+            </td>
+            <td>
+              {#if cands.length && personAccountId}<button data-testid={`claim-apply-${c.id}`} class="primary" onclick={() => void applyClaim(c.id)}>Apply</button>{/if}
+              <button data-testid={`claim-dismiss-${c.id}`} onclick={() => void dismissClaim(c.id)}>Dismiss</button>
+            </td>
+          </tr>
+        {/each}
+      </tbody>
+    </table>
+  {/if}
   {#if !items.length}
     <p class="dim" data-testid="rv-empty">Nothing to review. Every imported row has a category.</p>
   {:else}
@@ -93,4 +143,7 @@
   td.money { text-align: right; }
   td.date { font-family: var(--font-mono); font-size: 0.9rem; }
   tr.prefilled td { background: rgba(79, 209, 197, 0.05); }
+  h3 { color: var(--blue); margin: 4px 0 8px; display: flex; gap: 10px; align-items: baseline; font-size: 1rem; }
+  .claims { margin-bottom: 20px; }
+  select { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; max-width: 320px; }
 </style>

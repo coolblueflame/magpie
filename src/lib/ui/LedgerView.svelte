@@ -31,16 +31,17 @@
   const tone = (c: number) => (c < 0 ? 'neg' : c > 0 ? 'pos' : '');
   const today = () => new Date().toISOString().slice(0, 10);
 
-  function draftFor(row: LedgerRow): { draft: TxDraft; payee: string; note: string } {
+  function draftFor(row: LedgerRow): { draft: TxDraft; payee: string; note: string; shared: { accountId: string; percent: number } | null } {
     const tx = app.state.transactions.find((t) => t.id === row.txId)!;
     return {
-      draft: draftFromTransaction($state.snapshot(tx)), payee: payeeName(tx.payeeId),
+      draft: draftFromTransaction($state.snapshot(tx)), payee: payeeName(tx.payeeId), shared: tx.shared ? { ...tx.shared } : null,
       note: row.far ? `Entered in ${accountName(tx.accountId)}; amounts below are from that side.` : '',
     };
   }
-  async function save(row: LedgerRow | null, draft: TxDraft, payee: string) {
-    if (row) await app.updateTransaction(row.txId, draft, payee);
-    else await app.addTransaction(draft, payee);
+  const sharedOf = (txId: string) => app.state.transactions.find((t) => t.id === txId)?.shared;
+  async function save(row: LedgerRow | null, draft: TxDraft, payee: string, shared: { accountId: string; percent: number } | null) {
+    if (row) await app.updateTransaction(row.txId, draft, payee, shared);
+    else await app.addTransaction(draft, payee, shared);
     editing = null;
     toast.show(row ? 'Saved transaction' : 'Added transaction', () => void undoStack.undo());
   }
@@ -68,7 +69,7 @@
       <button data-testid="add-tx" class="primary" onclick={() => (editing = 'new')}>Add transaction</button>
     </header>
     {#if editing === 'new'}
-      <TransactionEditor draft={emptyDraft(id, today())} onSave={(d, p) => save(null, d, p)} onCancel={() => (editing = null)} />
+      <TransactionEditor draft={emptyDraft(id, today())} onSave={(d, p, s) => save(null, d, p, s)} onCancel={() => (editing = null)} />
     {/if}
     <table>
       <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Memo</th><th class="money">Outflow</th><th class="money">Inflow</th><th class="money">Balance</th><th>C</th></tr></thead>
@@ -77,7 +78,7 @@
           <tr data-testid={`row-${row.id}`} class:far={row.far} class:isnew={row.status === 'new'} onclick={() => (editing = editing === row.id ? null : row.id)}>
             <td class="date">{row.date}</td>
             <td>{payeeName(row.payeeId)}</td>
-            <td>{label(row.kind)}{#if row.status === 'new'} <span class="badge" data-testid={`new-${row.id}`}>new</span>{/if}</td>
+            <td>{label(row.kind)}{#if !row.far && sharedOf(row.txId)} <span class="shared" data-testid={`shared-${row.id}`}>· shared {sharedOf(row.txId)!.percent}%</span>{/if}{#if row.status === 'new'} <span class="badge" data-testid={`new-${row.id}`}>new</span>{/if}</td>
             <td class="dim memo">{row.memo}</td>
             <td class="money neg">{row.amount < 0 ? formatMoney(-row.amount) : ''}</td>
             <td class="money pos">{row.amount > 0 ? formatMoney(row.amount) : ''}</td>
@@ -88,8 +89,8 @@
           {#if editing === row.id}
             {@const e = draftFor(row)}
             <tr class="editrow"><td colspan="8">
-              <TransactionEditor draft={e.draft} payeeName={e.payee} note={e.note}
-                onSave={(d, p) => save(row, d, p)} onCancel={() => (editing = null)} onDelete={() => void remove(row)} />
+              <TransactionEditor draft={e.draft} payeeName={e.payee} note={e.note} shared={e.shared}
+                onSave={(d, p, s) => save(row, d, p, s)} onCancel={() => (editing = null)} onDelete={() => void remove(row)} />
             </td></tr>
           {/if}
         {/each}
@@ -121,6 +122,7 @@
   tr.far td:first-child { border-left: 2px solid var(--blue-deep); }
   tr.isnew td { background: rgba(240, 180, 90, 0.06); }
   .badge { background: var(--amber); color: var(--bg0); border-radius: 999px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; }
+  .shared { color: var(--teal); font-size: 0.85rem; }
   .clr { border: none; padding: 0 4px; color: var(--dim); }
   .clr.on { color: var(--teal); }
   tr.editrow td { padding: 8px; }

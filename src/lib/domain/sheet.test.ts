@@ -3,8 +3,7 @@ import { isSheetHeader, parseSheet, planClaims, planSheet } from './sheet';
 import { sharedLines, shareSplit } from './shares';
 import { seedData } from './seed';
 import type { ShareClaim, Transaction } from './types';
-
-const HEADER = ['When', 'Me Paid', 'Them Paid', "T's %", 'Where', 'What', "Me's Share", "Them's Share", '', 'Me Owes Them', 'Them Owes Me', '', '', '', 'Date', 'Amount', 'Payee', 'Memo'];
+import { SHEET_HEADER as HEADER } from './sheetFixture';
 
 describe('shares', () => {
   test('split rounds the partner share half away from zero and sums exactly', () => {

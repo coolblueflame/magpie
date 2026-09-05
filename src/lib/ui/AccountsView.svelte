@@ -4,9 +4,25 @@
   import { accountBalances } from '../domain/ledger';
   import { formatMoney } from '../domain/money';
   import { navigate } from './router.svelte';
-  import type { Account } from '../domain/types';
+  import type { Account, AccountKind } from '../domain/types';
+  import { undoStack } from '../state/undo.svelte';
+  import { toast } from './toast.svelte';
+  import { focusOnMount } from './focusOnMount';
 
+  const KINDS: AccountKind[] = ['chequing', 'savings', 'credit', 'cash', 'person', 'loan', 'investment', 'other'];
   let showClosed = $state(false);
+  let adding = $state(false);
+  let newName = $state('');
+  let newKind = $state<AccountKind>('chequing');
+  let newOnBudget = $state(true);
+  async function addAccount() {
+    const name = newName.trim();
+    if (!name) return;
+    adding = false;
+    newName = '';
+    await app.addAccount(name, newKind, newOnBudget);
+    toast.show(`Added ${name}`, () => void undoStack.undo());
+  }
   const balances = $derived(accountBalances(app.state.accounts, $state.snapshot(app.state.transactions)));
   const list = (onBudget: boolean) => app.state.accounts
     .filter((a) => a.onBudget === onBudget && (showClosed || !a.closed))
@@ -19,6 +35,15 @@
   <header>
     <h2>Accounts</h2>
     <label class="toggle"><input type="checkbox" data-testid="show-closed" bind:checked={showClosed} /> Show closed</label>
+    {#if adding}
+      <input data-testid="new-account-name" placeholder="Account name" bind:value={newName} use:focusOnMount
+        onkeydown={(e) => { if (e.key === 'Enter') void addAccount(); if (e.key === 'Escape') adding = false; }} />
+      <select data-testid="new-account-kind" bind:value={newKind}>{#each KINDS as k}<option value={k}>{k}</option>{/each}</select>
+      <label class="toggle"><input type="checkbox" data-testid="new-account-onbudget" bind:checked={newOnBudget} disabled={newKind === 'person'} /> On budget</label>
+      <button data-testid="new-account-save" onclick={() => void addAccount()}>Add</button>
+    {:else}
+      <button data-testid="add-account" onclick={() => (adding = true)}>Add account</button>
+    {/if}
     <span class="spacer"></span>
     <span class="dim">Net worth</span> <span class={`money big ${tone(total(app.state.accounts))}`} data-testid="net-worth">{formatMoney(total(app.state.accounts))}</span>
   </header>
@@ -50,6 +75,7 @@
   .dim { color: var(--dim); }
   .big { font-size: 1.3rem; }
   .toggle { color: var(--dim); font-size: 0.9rem; display: flex; align-items: center; gap: 4px; }
+  select { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; }
   h3 { color: var(--blue); display: flex; justify-content: space-between; margin: 20px 0 6px; }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--dim); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); }

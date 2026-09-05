@@ -9,10 +9,12 @@ import { fillPatches, type AssignmentPatch } from '../domain/goals';
 import { movePatches, type MoveEnd } from '../domain/moves';
 import { formatMoney } from '../domain/money';
 import { normalisePayeeKey } from '../domain/payees';
+import { needsCategory } from '../domain/ledger';
 import { fieldsFromDraft, type LineTarget, type TxDraft } from '../domain/transactions';
+import { sharedLines } from '../domain/shares';
 import { nanoid } from 'nanoid';
 import { monthKeyOf } from '../domain/month';
-import type { Category, CategoryGroup, Cents, ClearedState, CsvProfile, MonthKey, Payee, Row, Settings, Transaction } from '../domain/types';
+import type { Account, AccountKind, Category, CategoryGroup, Cents, ClearedState, CsvProfile, MonthKey, Payee, Row, Settings, ShareClaim, Transaction } from '../domain/types';
 import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
 import { Repo, type AppState, type Snapshot, type TableName } from '../storage/repo';
@@ -239,7 +241,7 @@ export class AppStore {
 
   // ── transactions and payees (phase 3b) ──────────────────────────────────
 
-  private accountsById(): Map<string, import('../domain/types').Account> {
+  private accountsById(): Map<string, Account> {
     return new Map(this.state.accounts.map((a) => [a.id, a]));
   }
 
@@ -259,25 +261,62 @@ export class AppStore {
     return { id, edits: [{ table: 'payees', id, create: { name: name.trim(), aliases: [], note: '' } }] };
   }
 
-  /** The stored fields for a draft, with the payee resolved from typed text when given. */
-  private resolveDraft(draft: TxDraft, payeeName: string | undefined) {
+  /**
+   * The stored fields for a draft, with the payee resolved from typed text when
+   * given. A `shared` choice re-derives the lines from the draft's category by
+   * the §4.4 rule (the whole amount is what the user paid); `null` clears it.
+   */
+  private resolveDraft(draft: TxDraft, payeeName: string | undefined, shared?: { accountId: string; percent: number } | null) {
     const payee = payeeName === undefined ? { id: draft.payeeId, edits: [] as Edit[] } : this.ensurePayee(payeeName);
-    const fields = fieldsFromDraft({ ...draft, ...(payee.id ? { payeeId: payee.id } : { payeeId: undefined }) }, this.accountsById());
+    const accountsById = this.accountsById();
+    let fields: ReturnType<typeof fieldsFromDraft> & { shared?: Transaction['shared'] } =
+      fieldsFromDraft({ ...draft, ...(payee.id ? { payeeId: payee.id } : { payeeId: undefined }) }, accountsById);
+    if (shared) {
+      const categoryId = fields.lines.find((l) => !l.transferAccountId)?.categoryId;
+      const lines = sharedLines(fields.amount, -fields.amount, shared.percent, categoryId, shared.accountId);
+      const own = accountsById.get(fields.accountId)!;
+      const missing = lines.some((l) => !l.categoryId && needsCategory(l, own, l.transferAccountId ? accountsById.get(l.transferAccountId) : undefined));
+      fields = { ...fields, lines, status: missing ? 'new' : 'ok', shared };
+    } else if (shared === null) {
+      fields = { ...fields, shared: undefined };
+    }
     return { fields: { ...fields, payeeId: payee.id }, edits: payee.edits };
   }
 
-  async addTransaction(draft: TxDraft, payeeName?: string): Promise<Transaction> {
-    const { fields, edits } = this.resolveDraft(draft, payeeName);
+  async addTransaction(draft: TxDraft, payeeName?: string, shared?: { accountId: string; percent: number } | null): Promise<Transaction> {
+    const { fields, edits } = this.resolveDraft(draft, payeeName, shared);
     const id = nanoid();
     edits.push({ table: 'transactions', id, create: { ...fields, source: { kind: 'manual', batchId: 'manual' } } });
     await this.commitEdits(edits, 'add transaction');
     return this.transaction(id);
   }
 
-  async updateTransaction(id: string, draft: TxDraft, payeeName?: string): Promise<void> {
-    const { fields, edits } = this.resolveDraft(draft, payeeName);
+  async updateTransaction(id: string, draft: TxDraft, payeeName?: string, shared?: { accountId: string; percent: number } | null): Promise<void> {
+    const { fields, edits } = this.resolveDraft(draft, payeeName, shared);
     edits.push({ table: 'transactions', id, patch: fields as Partial<Row> });
     await this.commitEdits(edits, 'edit transaction');
+  }
+
+  addAccount(name: string, kind: AccountKind, onBudget: boolean): Promise<Account> {
+    const sortOrder = Math.max(-1, ...this.state.accounts.map((a) => a.sortOrder)) + 1;
+    return this.createRow<Account>('accounts', { name: name.trim(), kind, onBudget: kind === 'person' ? true : onBudget, closed: false, sortOrder, note: '' }, `add account ${name.trim()}`);
+  }
+
+  /** Split one bank row by an open claim and close the claim; one undo entry. */
+  applyClaim(claimId: string, txId: string, personAccountId: string): Promise<void> {
+    const claim = this.state.claims.find((c) => c.id === claimId);
+    const tx = this.transaction(txId);
+    if (!claim) throw new Error(`no claim ${claimId}`);
+    const categoryId = tx.lines.find((l) => !l.transferAccountId)?.categoryId;
+    const lines = sharedLines(tx.amount, claim.total, claim.percent, categoryId, personAccountId);
+    return this.commitEdits([
+      { table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent }, status: categoryId ? 'ok' : 'new' } as Partial<Row> },
+      { table: 'claims', id: claim.id, patch: { status: 'applied', transactionId: tx.id } as Partial<Row> },
+    ], 'apply shared claim');
+  }
+
+  dismissClaim(claimId: string): Promise<void> {
+    return this.patchRow<ShareClaim>('claims', claimId, { status: 'dismissed' }, 'dismiss claim');
   }
 
   deleteTransaction(id: string): Promise<void> {
