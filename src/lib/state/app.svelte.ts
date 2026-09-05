@@ -12,7 +12,7 @@ import { normalisePayeeKey } from '../domain/payees';
 import { fieldsFromDraft, type LineTarget, type TxDraft } from '../domain/transactions';
 import { nanoid } from 'nanoid';
 import { monthKeyOf } from '../domain/month';
-import type { Category, CategoryGroup, Cents, ClearedState, MonthKey, Payee, Row, Transaction } from '../domain/types';
+import type { Category, CategoryGroup, Cents, ClearedState, CsvProfile, MonthKey, Payee, Row, Settings, Transaction } from '../domain/types';
 import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
 import { Repo, type AppState, type Snapshot, type TableName } from '../storage/repo';
@@ -33,7 +33,7 @@ export type Edit =
 
 export class AppStore {
   state: AppState = $state({
-    accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], history: [],
+    accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], claims: [], profiles: [], history: [],
     settings: { ...DEFAULT_SETTINGS }, settingsUpdatedAt: 0,
   });
   ready = $state(false);
@@ -111,7 +111,7 @@ export class AppStore {
   async deleteAllData(): Promise<void> {
     this.ready = false;
     await this.repo.deleteDatabase();
-    Object.assign(this.state, { accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], history: [], settings: { ...DEFAULT_SETTINGS }, settingsUpdatedAt: 0 });
+    Object.assign(this.state, { accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], claims: [], profiles: [], history: [], settings: { ...DEFAULT_SETTINGS }, settingsUpdatedAt: 0 });
     undoStack.clear();
     await this.init(this.dbName, { seed: false });
   }
@@ -167,6 +167,8 @@ export class AppStore {
       case 'assignments': return this.state.assignments;
       case 'transactions': return this.state.transactions;
       case 'payees': return this.state.payees;
+      case 'claims': return this.state.claims;
+      case 'profiles': return this.state.profiles;
       case 'history': return this.state.history;
       default: throw new Error(`${table} is not mirrored`);
     }
@@ -334,6 +336,40 @@ export class AppStore {
     edits.push({ table: 'payees', id: into, patch: { aliases } as Partial<Row> });
     for (const p of gone) edits.push({ table: 'payees', id: p.id, patch: { deleted: true } });
     return this.commitEdits(edits, `merge ${ids.length} payees`);
+  }
+
+  // ── file import (phase 4) ───────────────────────────────────────────────
+
+  /** Everything the import planners read; a snapshot so the planners see plain rows. */
+  importState() {
+    return {
+      transactions: $state.snapshot(this.state.transactions), payees: $state.snapshot(this.state.payees),
+      claims: $state.snapshot(this.state.claims), accountsById: this.accountsById(),
+    };
+  }
+
+  /** One file's worth of creates and patches as one undo entry. */
+  applyEdits(edits: Edit[], label: string): Promise<void> {
+    return this.commitEdits(edits, label);
+  }
+
+  /** Not undoable on purpose: which bank file belongs to which account is bookkeeping, not a user edit. */
+  async rememberAccountRef(accountId: string, externalRef: string): Promise<void> {
+    await this.writePatch('accounts', accountId, { externalRef } as Partial<Row>);
+  }
+
+  async saveProfile(profile: Omit<CsvProfile, keyof Row> & { id?: string }): Promise<CsvProfile> {
+    const existing = profile.id ? this.state.profiles.find((p) => p.id === profile.id) : undefined;
+    if (existing) { await this.writePatch('profiles', existing.id, profile as Partial<Row>); return this.state.profiles.find((p) => p.id === existing.id)!; }
+    const row = await this.repo.create<CsvProfile>('profiles', profile);
+    this.applyToMirror('profiles', row);
+    return row;
+  }
+
+  async updateSettings(patch: Partial<Settings>): Promise<void> {
+    const updatedAt = await this.repo.updateSettings(patch);
+    Object.assign(this.state.settings, patch);
+    this.state.settingsUpdatedAt = updatedAt;
   }
 
   // ── budget management (phase 3a) ────────────────────────────────────────
