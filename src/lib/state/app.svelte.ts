@@ -10,11 +10,14 @@ import { movePatches, type MoveEnd } from '../domain/moves';
 import { formatMoney } from '../domain/money';
 import { normalisePayeeKey } from '../domain/payees';
 import { needsCategory } from '../domain/ledger';
-import { fieldsFromDraft, type LineTarget, type TxDraft } from '../domain/transactions';
+import { emptyDraft, fieldsFromDraft, type LineTarget, type TxDraft } from '../domain/transactions';
+import { dueInterest } from '../domain/loans';
+import { accountBalances } from '../domain/ledger';
+import { todayKey } from '../domain/month';
 import { sharedLines } from '../domain/shares';
 import { nanoid } from 'nanoid';
 import { monthKeyOf } from '../domain/month';
-import type { Account, AccountKind, Category, CategoryGroup, Cents, ClearedState, CsvProfile, MonthKey, Payee, Row, Settings, ShareClaim, Transaction } from '../domain/types';
+import type { Account, AccountKind, Category, CategoryGroup, Cents, ClearedState, CsvProfile, LoanTerms, MonthKey, Payee, Row, Settings, ShareClaim, Transaction } from '../domain/types';
 import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
 import { Repo, type AppState, type BatchOp, type Snapshot, type TableName } from '../storage/repo';
@@ -139,6 +142,7 @@ export class AppStore {
     const cfg = await this.repo.getDevice<SyncConfig>('syncConfig');
     if (cfg) { this.startEngine(cfg); void this.engine!.syncNow(); }
     this.ready = true;
+    void this.runInterestSweep();
   }
 
   private async hydrate(): Promise<void> {
@@ -512,6 +516,57 @@ export class AppStore {
     Object.assign(this.state.settings, patch);
     this.state.settingsUpdatedAt = updatedAt;
     this.touched();
+  }
+
+  // ── loans and tracking balances (spec §4.8) ─────────────────────────────
+
+  async setLoanTerms(accountId: string, loan: LoanTerms): Promise<void> {
+    const name = this.state.accounts.find((a) => a.id === accountId)?.name ?? 'loan';
+    await this.patchRow<Account>('accounts', accountId, { loan }, `loan terms ${name}`);
+    await this.runInterestSweep();
+  }
+
+  /**
+   * Post the interest rows loans without statements are owed up to today. A
+   * sweep, not a user action: no undo entry, and idempotent by row id so two
+   * devices or two triggers agree.
+   */
+  async runInterestSweep(today: string = todayKey()): Promise<number> {
+    if (!this.repo) return 0;
+    const ops: BatchOp[] = [];
+    let payeeId: string | undefined;
+    for (const a of this.state.accounts) {
+      if (a.kind !== 'loan' || !a.loan?.generateInterest || a.closed) continue;
+      const due = dueInterest($state.snapshot(a), this.transactionsSnap, today);
+      if (!due.length) continue;
+      if (!payeeId) {
+        const p = this.ensurePayee('Interest');
+        payeeId = p.id;
+        ops.push(...p.edits.map((e) => ('create' in e ? { table: e.table, id: e.id, create: e.create } : { table: e.table, id: e.id, patch: e.patch })));
+      }
+      for (const d of due) {
+        ops.push({ table: 'transactions', id: d.id, create: {
+          accountId: a.id, date: d.date, memo: 'Interest', amount: d.amount, cleared: 'cleared', status: 'ok',
+          source: { kind: 'manual', batchId: 'interest' }, lines: [{ amount: d.amount, memo: '' }], payeeId,
+        } as Omit<Transaction, keyof Row> });
+      }
+    }
+    if (ops.length) await this.writeBatch(ops);
+    return ops.filter((o) => o.table === 'transactions').length;
+  }
+
+  /** Make a tracking account show `target` by writing one adjustment for the difference; remembers the payee and category. */
+  async setBalance(accountId: string, target: Cents, payeeName: string, categoryId?: string): Promise<Transaction | null> {
+    const working = accountBalances(this.accountsSnap, this.transactionsSnap).get(accountId)?.working ?? 0;
+    const delta = target - working;
+    await this.updateSettings({ adjustment: { payeeName, ...(categoryId ? { categoryId } : {}) } });
+    if (!delta) return null;
+    const draft: TxDraft = {
+      ...emptyDraft(accountId, todayKey()), cleared: 'cleared',
+      inflow: delta > 0 ? delta : 0, outflow: delta < 0 ? -delta : 0,
+      target: categoryId ? { type: 'category', categoryId } : { type: 'none' },
+    };
+    return this.addTransaction(draft, payeeName);
   }
 
   // ── budget management (phase 3a) ────────────────────────────────────────

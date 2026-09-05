@@ -10,6 +10,32 @@
   import { RTA } from '../domain/types';
   import { navigate } from './router.svelte';
   import TransactionEditor from './TransactionEditor.svelte';
+  import CategoryPicker from './CategoryPicker.svelte';
+  import { formatCents, parseCents } from '../domain/money';
+  import type { LineTarget } from '../domain/transactions';
+
+  // Balance adjustments for tracking accounts without statements (spec §4.8).
+  let settingBalance = $state(false);
+  let sbAmount = $state('');
+  let sbPayee = $state('');
+  let sbTarget = $state<LineTarget>({ type: 'none' });
+  let sbError = $state('');
+  function startSetBalance() {
+    const adj = app.state.settings.adjustment;
+    sbAmount = formatCents(balance?.working ?? 0);
+    sbPayee = adj?.payeeName ?? 'Balance adjustment';
+    sbTarget = adj?.categoryId ? { type: 'category', categoryId: adj.categoryId } : { type: 'none' };
+    sbError = '';
+    settingBalance = true;
+  }
+  async function saveBalance() {
+    const cents = parseCents(sbAmount);
+    if (cents === null) { sbError = 'Enter the balance the account should show.'; return; }
+    const categoryId = sbTarget.type === 'category' ? sbTarget.categoryId : undefined;
+    const tx = await app.setBalance(id, cents, sbPayee.trim() || 'Balance adjustment', categoryId);
+    settingBalance = false;
+    if (tx) undoToast(`Balance set to ${formatMoney(cents)}`);
+  }
 
   let { id }: { id: string } = $props();
   const PAGE = 100;
@@ -66,8 +92,22 @@
       <span class="spacer"></span>
       <span class="dim">Working</span> <span class={`money big ${tone(balance?.working ?? 0)}`} data-testid="ledger-working">{formatMoney(balance?.working ?? 0)}</span>
       <span class="dim">Cleared</span> <span class={`money ${tone(balance?.cleared ?? 0)}`} data-testid="ledger-cleared">{formatMoney(balance?.cleared ?? 0)}</span>
+      {#if !account.onBudget && account.kind !== 'loan'}
+        <button data-testid="set-balance" onclick={startSetBalance}>Set balance</button>
+      {/if}
       <button data-testid="add-tx" class="primary" onclick={() => (editing = 'new')}>Add transaction</button>
     </header>
+    {#if settingBalance}
+      <div class="setbal" data-testid="set-balance-form">
+        <label>Balance today <input data-testid="sb-amount" class="money" bind:value={sbAmount} onkeydown={(e) => { if (e.key === 'Enter') void saveBalance(); if (e.key === 'Escape') settingBalance = false; }} /></label>
+        <label>Payee <input data-testid="sb-payee" list="payee-list-sb" bind:value={sbPayee} /></label>
+        <datalist id="payee-list-sb">{#each app.state.payees as p (p.id)}<option value={p.name}></option>{/each}</datalist>
+        <label>Category (reporting only) <CategoryPicker testid="sb-category" mode="categories" value={sbTarget} accountId={id} onChange={(t) => (sbTarget = t)} /></label>
+        <button data-testid="sb-save" class="primary" onclick={() => void saveBalance()}>Write adjustment</button>
+        <button data-testid="sb-cancel" onclick={() => (settingBalance = false)}>Cancel</button>
+        {#if sbError}<span class="error">{sbError}</span>{/if}
+      </div>
+    {/if}
     {#if editing === 'new'}
       <TransactionEditor draft={emptyDraft(id, todayKey())} onSave={(d, p, s) => save(null, d, p, s)} onCancel={() => (editing = null)} />
     {/if}
@@ -110,6 +150,10 @@
   .spacer { flex: 1; }
   .big { font-size: 1.3rem; }
   .primary { border-color: var(--blue); color: var(--blue); }
+  .setbal { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; background: var(--bg1); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .setbal label { display: grid; gap: 3px; color: var(--dim); font-size: 0.9rem; }
+  .setbal input.money { text-align: right; font-family: var(--font-mono); width: 130px; }
+  .error { color: var(--red); }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--dim); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
   th.money { text-align: right; }

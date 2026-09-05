@@ -251,6 +251,28 @@ describe('AppStore', () => {
     expect(s.state.assignments.some((a) => a.month === '2026-08' && a.amount === 100)).toBe(false);
   });
 
+  test('loan terms post interest rows once per elapsed month; set-balance writes the difference', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    const loan = await s.addAccount('Family loan', 'loan', false);
+    await s.addTransaction({ ...emptyDraft(loan.id, '2026-06-01'), outflow: 100000, cleared: 'cleared' }, 'Opening');
+    await s.setLoanTerms(loan.id, { annualRatePct: 12, standardPayment: 10000, generateInterest: true, interestDay: 15 });
+    const posted = await s.runInterestSweep('2026-08-20');
+    const rows = () => s.state.transactions.filter((t) => t.accountId === loan.id && t.memo === 'Interest').sort((a, b) => (a.date < b.date ? -1 : 1));
+    expect(rows().map((t) => [t.date, t.amount])).toEqual([['2026-06-15', -1000], ['2026-07-15', -1010], ['2026-08-15', -1020]]);
+    expect(posted).toBe(0);   // setLoanTerms already swept up to today; the explicit earlier date adds nothing new
+    expect(await s.runInterestSweep('2026-08-20')).toBe(0);
+    expect(s.state.payees.some((p) => p.name === 'Interest')).toBe(true);
+
+    const before = s.state.transactions.length;
+    const adj = await s.setBalance('acc_inv', 60000, 'The Ether', 'cat_save');
+    expect(adj).toMatchObject({ accountId: 'acc_inv', amount: 10000, status: 'ok' });
+    expect(adj!.lines[0]!.categoryId).toBe('cat_save');
+    expect(s.state.transactions.length).toBe(before + 1);
+    expect(s.state.settings.adjustment).toEqual({ payeeName: 'The Ether', categoryId: 'cat_save' });
+    expect(await s.setBalance('acc_inv', 60000, 'The Ether')).toBeNull();
+  });
+
   test('mergePayees repoints transactions, keeps aliases, and undoes as one', async () => {
     const s = await fresh();
     await s.loadSeed();
