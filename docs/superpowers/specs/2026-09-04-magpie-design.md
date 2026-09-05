@@ -394,6 +394,11 @@ Each phase ends with gates green, a commit pushed, and the memory file updated.
   budget never sees them. Imported statements may replace the manual step later.
 - **Charts**: spending by category over time, assigned vs spent, net worth; the stats
   columns in §6 are the seed.
+- **Payee suggestions for new descriptors**: a statement descriptor that matches no payee
+  or alias could offer the closest existing payee by token similarity (the matcher's
+  `similarity`) with a one-click accept that also records the alias. YNAB's history holds
+  the same merchants under both bank-importer names and raw statement names, so this is
+  where most first-import cleanup will go.
 - **Live sheet link**: read the shared sheet directly instead of a CSV export.
 - **Mobile helper view**: a read-mostly companion once sync exists.
 
