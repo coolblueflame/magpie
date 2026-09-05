@@ -20,7 +20,11 @@
   const invest = $derived(investmentIncomeSeries(app.accountsSnap, app.transactionsSnap, months));
   const hasInvestments = $derived(app.state.accounts.some((a) => a.kind === 'investment'));
   const budget = $derived(computeBudget({ accounts: app.accountsSnap, categories: app.categoriesSnap, assignments: app.assignmentsSnap, transactions: app.transactionsSnap, history: app.historySnap, currentMonth: app.currentMonth, cutoverMonth: app.state.settings.cutoverMonth }, app.currentMonth));
-  const cats = $derived(visibleCategories(app.state.categories, app.state.groups).sort((a, b) => a.name.localeCompare(b.name)));
+  // Grouped in budget order, like every other category picker.
+  const groupsInOrder = $derived([...app.state.groups].filter((g) => !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
+  const visible = $derived(visibleCategories(app.state.categories, app.state.groups));
+  const catsOf = (gid: string) => visible.filter((c) => c.groupId === gid).sort((a, b) => a.sortOrder - b.sortOrder);
+  const cats = $derived(groupsInOrder.flatMap((g) => catsOf(g.id)));
   const category = $derived(app.state.categories.find((c) => c.id === categoryId) ?? cats[0]);
   const catSeries = $derived(category ? categorySpendSeries(budget.activityByCategory.get(category.id), months) : []);
   const catStats = $derived(category ? categoryStats(budget.activityByCategory.get(category.id), app.currentMonth) : null);
@@ -43,7 +47,9 @@
     ]} />
     <BarChart testid="chart-flow" title="Income and spending by month" series={[{ name: 'Income', points: flow.income, slot: 1 }, { name: 'Spending', points: flow.spending, slot: 2 }]} />
     <div class="catpick">
-      <label>Category <select data-testid="chart-category-pick" value={category?.id ?? ''} onchange={(e) => (categoryId = e.currentTarget.value)}>{#each cats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}</select></label>
+      <label>Category <select data-testid="chart-category-pick" value={category?.id ?? ''} onchange={(e) => (categoryId = e.currentTarget.value)}>
+        {#each groupsInOrder as g (g.id)}<optgroup label={g.name}>{#each catsOf(g.id) as c (c.id)}<option value={c.id}>{c.name}</option>{/each}</optgroup>{/each}
+      </select></label>
     </div>
     {#if category}
       <BarChart testid="chart-category" title={`${category.name}: spending by month`} series={[{ name: 'Spent', points: catSeries, slot: 1 }]} refs={catRefs} />

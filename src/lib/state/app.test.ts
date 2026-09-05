@@ -279,6 +279,25 @@ describe('AppStore', () => {
     expect(await s.setBalance('acc_inv', 60000, 'The Ether')).toBeNull();
   });
 
+  test('accounts rename and close; categories and groups move in one undo entry', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    await s.renameAccount('acc_card', 'Visa');
+    await s.setAccountClosed('acc_inv', true);
+    expect(s.state.accounts.find((a) => a.id === 'acc_card')!.name).toBe('Visa');
+    expect(s.state.accounts.find((a) => a.id === 'acc_inv')!.closed).toBe(true);
+    const order = () => s.state.categories.filter((c) => c.groupId === 'grp_bills').sort((a, b) => a.sortOrder - b.sortOrder).map((c) => c.id);
+    expect(order()).toEqual(['cat_rent', 'cat_util', 'cat_save']);
+    await s.moveCategory('cat_save', -1);
+    expect(order()).toEqual(['cat_rent', 'cat_save', 'cat_util']);
+    await s.moveCategory('cat_rent', -1);   // already first: nothing happens, no entry
+    expect(order()).toEqual(['cat_rent', 'cat_save', 'cat_util']);
+    expect(await undoStack.undo()).toBe('move Savings');
+    expect(order()).toEqual(['cat_rent', 'cat_util', 'cat_save']);
+    await s.moveGroup('grp_bills', -1);
+    expect([...s.state.groups].sort((a, b) => a.sortOrder - b.sortOrder).map((g) => g.id)).toEqual(['grp_bills', 'grp_every']);
+  });
+
   test('mergePayees repoints transactions, keeps aliases, and undoes as one', async () => {
     const s = await fresh();
     await s.loadSeed();

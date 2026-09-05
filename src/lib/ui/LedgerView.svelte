@@ -95,6 +95,7 @@
       {#if !account.onBudget && account.kind !== 'loan'}
         <button data-testid="set-balance" onclick={startSetBalance}>Set balance</button>
       {/if}
+      <button data-testid="import-here" onclick={() => navigate({ name: 'import', accountId: id })}>Import</button>
       <button data-testid="add-tx" class="primary" onclick={() => (editing = 'new')}>Add transaction</button>
     </header>
     {#if settingBalance}

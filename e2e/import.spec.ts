@@ -33,6 +33,7 @@ const availableOf = (page: Page, name: string) =>
 test('imports the fixture export and shows the verified budget', async ({ page }) => {
   await reset(page, false);
   await loadFixture(page);
+  await expect(page.getByTestId('person-help')).toContainText('money owed between you and someone else');
   await page.getByTestId('kind-1').selectOption('credit');
   await page.getByTestId('person-2').check();
   await page.getByTestId('kind-3').selectOption('investment');

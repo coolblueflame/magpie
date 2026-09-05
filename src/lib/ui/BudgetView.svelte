@@ -124,11 +124,15 @@
   const tone = (cents: number) => (cents < 0 ? 'neg' : cents > 0 ? 'pos' : '');
   const categoryItems = (c: Category) => [
     { label: 'Rename', testid: `menu-${c.id}-rename`, run: () => startRename(c.id, c.name) },
+    { label: 'Move up', testid: `menu-${c.id}-up`, run: () => void app.moveCategory(c.id, -1) },
+    { label: 'Move down', testid: `menu-${c.id}-down`, run: () => void app.moveCategory(c.id, 1) },
     { label: c.hidden ? 'Unhide' : 'Hide', testid: `menu-${c.id}-hide`, run: () => void app.setCategoryHidden(c.id, !c.hidden) },
   ];
   const groupItems = (g: CategoryGroup) => [
     { label: 'Add category', testid: `menu-${g.id}-add`, run: () => { addingIn = g.id; addDraft = ''; } },
     { label: 'Rename', testid: `menu-${g.id}-rename`, run: () => startRename(g.id, g.name) },
+    { label: 'Move up', testid: `menu-${g.id}-up`, run: () => void app.moveGroup(g.id, -1) },
+    { label: 'Move down', testid: `menu-${g.id}-down`, run: () => void app.moveGroup(g.id, 1) },
     { label: g.hidden ? 'Unhide' : 'Hide', testid: `menu-${g.id}-hide`, run: () => void app.setGroupHidden(g.id, !g.hidden) },
   ];
 </script>

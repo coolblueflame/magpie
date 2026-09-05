@@ -412,6 +412,38 @@ export class AppStore {
     await this.commitEdits(edits, 'edit transaction');
   }
 
+  renameAccount(id: string, name: string): Promise<void> {
+    const old = this.state.accounts.find((a) => a.id === id)?.name ?? 'account';
+    return this.patchRow<Account>('accounts', id, { name: name.trim() }, `rename ${old}`);
+  }
+
+  /** A closed account leaves pickers and the accounts list; its rows and history stay. */
+  setAccountClosed(id: string, closed: boolean): Promise<void> {
+    const name = this.state.accounts.find((a) => a.id === id)?.name ?? 'account';
+    return this.patchRow<Account>('accounts', id, { closed }, `${closed ? 'close' : 'reopen'} ${name}`);
+  }
+
+  /** Swap sort positions with the neighbour in the same list; one undo entry. */
+  private reorder<T extends Row & { sortOrder: number }>(table: TableName, rows: T[], id: string, direction: -1 | 1, label: string): Promise<void> {
+    const sorted = [...rows].sort((a, b) => a.sortOrder - b.sortOrder);
+    const i = sorted.findIndex((r) => r.id === id);
+    const j = i + direction;
+    if (i === -1 || j < 0 || j >= sorted.length) return Promise.resolve();
+    const a = sorted[i]!, b = sorted[j]!;
+    // Distinct positions even when imported rows share a sortOrder.
+    const [pa, pb] = a.sortOrder === b.sortOrder ? [j, i] : [b.sortOrder, a.sortOrder];
+    return this.patchRows<T>(table, [{ id: a.id, patch: { sortOrder: pa } as Partial<T> }, { id: b.id, patch: { sortOrder: pb } as Partial<T> }], label);
+  }
+
+  moveCategory(id: string, direction: -1 | 1): Promise<void> {
+    const c = this.category(id);
+    return this.reorder('categories', this.state.categories.filter((x) => x.groupId === c.groupId), id, direction, `move ${c.name}`);
+  }
+
+  moveGroup(id: string, direction: -1 | 1): Promise<void> {
+    return this.reorder('groups', this.state.groups, id, direction, `move ${this.group(id).name}`);
+  }
+
   addAccount(name: string, kind: AccountKind, onBudget: boolean): Promise<Account> {
     const sortOrder = Math.max(-1, ...this.state.accounts.map((a) => a.sortOrder)) + 1;
     return this.createRow<Account>('accounts', { name: name.trim(), kind, onBudget: kind === 'person' ? true : onBudget, closed: false, sortOrder, note: '' }, `add account ${name.trim()}`);

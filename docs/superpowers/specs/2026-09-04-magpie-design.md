@@ -232,7 +232,8 @@ pre-filled" confirms the ones whose category came from payee memory, listing the
 
 ### 4.7 Undo
 
-Session-only undo, 12 deep, for every mutation (PB §2.12). Armed before the mutation.
+Session-only undo, 50 deep, for every mutation (PB §2.12), with Ctrl+Z / Shift+Ctrl+Z /
+Ctrl+Y and a History panel in the nav that lists undo and redo entries and jumps to one. Armed before the mutation.
 Bulk actions (confirm all, import including any claims it applies) undo as one entry. A toast's
 Undo targets the entry it announces, never merely the newest. Armed confirm for anything touching
 more than a handful of rows (PB §4 UX patterns).
@@ -366,7 +367,9 @@ greys for structure). Keyboard-first where the user spends time.
   non-zero; groups collapsible; per category: goal, assigned (editable, with a fill-to-goal
   button), activity, available, and the three stats (all-time monthly average from first
   activity, trailing 12 complete months, last month). Move money from any available cell.
-- **Accounts / Ledger**: account list with working and cleared balances; ledger per account
+- **Accounts / Ledger**: account list with working and cleared balances, rename and close
+  from a row menu, an Import button on each ledger that opens the import screen with that
+  account chosen; ledger per account
   with transfers shown on both sides; inline edit; add manual transaction; split editor;
   shared-percent editor.
 - **Review**: every `new` transaction across accounts plus open share claims; arrow keys,

@@ -39,7 +39,8 @@ export interface UndoEntry {
   redo?: () => Promise<void>;
 }
 
-const DEPTH = 12;
+// Fifty, not twelve: a budgeting session is many small edits, and the entries are closures.
+const DEPTH = 50;
 let seq = 0;
 
 class UndoStack {

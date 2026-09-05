@@ -2,13 +2,13 @@
 import type { MonthKey } from '../domain/types';
 
 export type Route =
-  | { name: 'budget'; month?: MonthKey } | { name: 'settings' } | { name: 'import' }
+  | { name: 'budget'; month?: MonthKey } | { name: 'settings' } | { name: 'import'; accountId?: string }
   | { name: 'accounts' } | { name: 'account'; id: string } | { name: 'review' } | { name: 'payees' } | { name: 'loans' } | { name: 'charts' };
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'settings') return { name: 'settings' };
-  if (parts[0] === 'import') return { name: 'import' };
+  if (parts[0] === 'import') return parts[1] ? { name: 'import', accountId: parts[1] } : { name: 'import' };
   if (parts[0] === 'accounts') return { name: 'accounts' };
   if (parts[0] === 'account' && parts[1]) return { name: 'account', id: parts[1] };
   if (parts[0] === 'review') return { name: 'review' };
@@ -21,7 +21,7 @@ function parse(hash: string): Route {
 
 export function toHash(r: Route): string {
   if (r.name === 'settings') return '#/settings';
-  if (r.name === 'import') return '#/import';
+  if (r.name === 'import') return r.accountId ? `#/import/${r.accountId}` : '#/import';
   if (r.name === 'accounts') return '#/accounts';
   if (r.name === 'account') return `#/account/${r.id}`;
   if (r.name === 'review') return '#/review';

@@ -5,9 +5,29 @@
   import { formatMoney } from '../domain/money';
   import { navigate } from './router.svelte';
   import type { Account, AccountKind } from '../domain/types';
-  import { undoStack } from '../state/undo.svelte';
   import { toast, undoToast } from './toast.svelte';
   import { focusOnMount } from './focusOnMount';
+  import RowMenu from './RowMenu.svelte';
+  import { PERSON_HELP } from './help';
+
+  let renaming = $state<string | null>(null);
+  let renameDraft = $state('');
+  async function commitRename(a: Account) {
+    if (renaming !== a.id) return;
+    renaming = null;
+    const name = renameDraft.trim();
+    if (!name || name === a.name) return;
+    await app.renameAccount(a.id, name);
+    undoToast(`Renamed ${a.name}`);
+  }
+  async function toggleClosed(a: Account) {
+    await app.setAccountClosed(a.id, !a.closed);
+    undoToast(`${a.closed ? 'Reopened' : 'Closed'} ${a.name}`);
+  }
+  const items = (a: Account) => [
+    { label: 'Rename', testid: `acct-menu-${a.id}-rename`, run: () => { renaming = a.id; renameDraft = a.name; } },
+    { label: a.closed ? 'Reopen' : 'Close', testid: `acct-menu-${a.id}-close`, run: () => void toggleClosed(a) },
+  ];
 
   const KINDS: AccountKind[] = ['chequing', 'savings', 'credit', 'cash', 'person', 'loan', 'investment', 'other'];
   let showClosed = $state(false);
@@ -41,6 +61,7 @@
       <select data-testid="new-account-kind" bind:value={newKind}>{#each KINDS as k}<option value={k}>{k}</option>{/each}</select>
       <label class="toggle"><input type="checkbox" data-testid="new-account-onbudget" bind:checked={newOnBudget} disabled={newKind === 'person'} /> On budget</label>
       <button data-testid="new-account-save" onclick={() => void addAccount()}>Add</button>
+      {#if newKind === 'person'}<span class="dim small" data-testid="person-help">{PERSON_HELP}</span>{/if}
     {:else}
       <button data-testid="add-account" onclick={() => (adding = true)}>Add account</button>
     {/if}
@@ -56,7 +77,14 @@
         {#each accts as a (a.id)}
           {@const b = balances.get(a.id)}
           <tr data-testid={`acct-${a.id}`} class:closed={a.closed} onclick={() => navigate({ name: 'account', id: a.id })}>
-            <td>{a.name}</td>
+            <td onclick={(e) => e.stopPropagation()}>
+              {#if renaming === a.id}
+                <input data-testid={`acct-rename-${a.id}`} bind:value={renameDraft} use:focusOnMount
+                  onkeydown={(e) => { if (e.key === 'Enter') void commitRename(a); if (e.key === 'Escape') renaming = null; }} onblur={() => void commitRename(a)} />
+              {:else}
+                <button class="name" onclick={() => navigate({ name: 'account', id: a.id })}>{a.name}</button><RowMenu testid={`acct-menu-${a.id}`} items={items(a)} />
+              {/if}
+            </td>
             <td class="dim">{a.kind}</td>
             <td class={`money ${tone(b?.working ?? 0)}`} data-testid={`acct-working-${a.id}`}>{formatMoney(b?.working ?? 0)}</td>
             <td class={`money ${tone(b?.cleared ?? 0)}`} data-testid={`acct-cleared-${a.id}`}>{formatMoney(b?.cleared ?? 0)}</td>
@@ -84,4 +112,7 @@
   tbody tr { cursor: pointer; }
   tbody tr:hover td { background: var(--bg1); }
   tr.closed td { color: var(--dim); font-style: italic; }
+  .name { border: none; padding: 0; text-align: left; font: inherit; }
+  .name:hover { color: var(--blue); }
+  .small { font-size: 0.85rem; max-width: 520px; }
 </style>

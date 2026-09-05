@@ -4,7 +4,7 @@
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
   import { toast, undoToast } from './toast.svelte';
-  import { navigate } from './router.svelte';
+  import { navigate, router } from './router.svelte';
   import { csvObjects, parseCsv } from '../domain/csv';
   import { candidatesFromCsv, DATE_FORMATS, detectDateFormat, headerSignature } from '../domain/csvImport';
   import { foldEdits, planImport, type ImportCandidate, type ImportPlan } from '../domain/importPlan';
@@ -18,6 +18,7 @@
     type InferredAccount, type YnabAccountChoice, type YnabImport, type YnabPlanRow, type YnabRegisterRow,
   } from '../domain/ynab';
   import type { AccountKind, CsvProfile, Transaction } from '../domain/types';
+  import { PERSON_HELP } from './help';
 
   const KINDS: AccountKind[] = ['chequing', 'savings', 'credit', 'cash', 'person', 'loan', 'investment', 'other'];
 
@@ -56,10 +57,14 @@
     input.value = '';   // so choosing the same file again fires change
     pickAccount();
   }
+  /** The account a ledger's Import button asked for; it wins over the file's own hints. */
+  const requestedAccount = $derived(router.current.name === 'import' ? router.current.accountId ?? '' : '');
   function pickAccount() {
     const c = queue[0];
     if (!c) return;
-    if (c.kind === 'ofx' && c.statement.accountRef) accountId = app.state.accounts.find((a) => a.externalRef === c.statement.accountRef)?.id ?? '';
+    const requested = app.state.accounts.some((a) => a.id === requestedAccount && !a.closed) ? requestedAccount : '';
+    if (requested && (c.kind === 'ofx' || c.kind === 'csv')) accountId = requested;
+    else if (c.kind === 'ofx' && c.statement.accountRef) accountId = app.state.accounts.find((a) => a.externalRef === c.statement.accountRef)?.id ?? '';
     else if (c.kind === 'csv') accountId = profileFor(c)?.accountId ?? '';
     else accountId = '';
     mapping = null;
@@ -248,7 +253,7 @@
 
 <section class="import" class:empty={isEmpty}>
   <div class="statements">
-  <h2>Import</h2>
+  <h2>Import{#if requestedAccount && app.state.accounts.some((a) => a.id === requestedAccount)} <span class="dim">into {app.state.accounts.find((a) => a.id === requestedAccount)?.name}</span>{/if}</h2>
   <p class="dim">Statement files (QFX/OFX), CSV exports, or the shared expense sheet. Several at once is fine; they queue.</p>
   <p><input type="file" multiple data-testid="file-any" onchange={(e) => void onFiles(e)} /></p>
   {#if error}<p class="error" data-testid="import-error">{error}</p>{/if}
@@ -362,9 +367,10 @@
   {#if ynabError}<p class="error" data-testid="ynab-error">{ynabError}</p>{/if}
   {#if register && planRows}
     <h3>Accounts</h3>
-    <p class="dim">Kind and on-budget were guessed from the rows; YNAB never categorises tracking accounts. Pick the partner's account if there is one.</p>
+    <p class="dim">Kind and on-budget were guessed from the rows; YNAB never categorises tracking accounts.</p>
+    <p class="dim" data-testid="person-help"><b>Person:</b> {PERSON_HELP} Mark the account you used for that in YNAB, if any.</p>
     <table>
-      <thead><tr><th>Account</th><th>Rows</th><th>Kind</th><th>On budget</th><th>Partner</th></tr></thead>
+      <thead><tr><th>Account</th><th>Rows</th><th>Kind</th><th>On budget</th><th title={PERSON_HELP}>Person</th></tr></thead>
       <tbody>
         {#each choices as c, i (c.name)}
           <tr data-testid={`account-row-${i}`}>

@@ -110,10 +110,37 @@ test('goal edits, rename, hide, add category and group', async ({ page }) => {
   await page.getByTestId('new-group').press('Enter');
   await expect(page.locator('tr.group', { hasText: 'Travel' })).toHaveCount(1);
 
+  // Rows: Groceries, Play, Coffee | Rent, Utilities, Savings; moving Savings up puts it fourth from the top.
+  await menu(page, 'cat_save', 'up')();
+  const rows = page.locator('tr[data-testid^="cat-row-"]');
+  await expect(rows.nth(4)).toHaveAttribute('data-testid', 'cat-row-cat_save');
+  await expect(rows.nth(5)).toHaveAttribute('data-testid', 'cat-row-cat_util');
+
   await page.reload();
   await page.getByTestId('rta').waitFor();
   await expect(page.locator('tr', { hasText: 'Coffee' })).toHaveCount(1);
   await expect(page.getByTestId('cat-row-cat_fun')).toContainText('Play');
+  await expect(page.locator('tr[data-testid^="cat-row-"]').nth(4)).toHaveAttribute('data-testid', 'cat-row-cat_save');
+
+  // History panel: undo the last two steps at once.
+  await page.getByTestId('assigned-cat_groc').click();
+  await page.getByTestId('assigned-input-cat_groc').fill('10');
+  await page.getByTestId('assigned-input-cat_groc').press('Enter');
+  await page.getByTestId('assigned-cat_rent').click();
+  await page.getByTestId('assigned-input-cat_rent').fill('20');
+  await page.getByTestId('assigned-input-cat_rent').press('Enter');
+  await page.getByTestId('nav-history').click();
+  const entries = page.locator('[data-testid^="history-undo-"]');
+  await expect(entries.first()).toContainText('assign Rent');
+  await entries.nth(1).click();   // "assign Groceries": undoes Rent then Groceries
+  await expect(page.getByTestId('assigned-cat_groc')).toHaveText('$600.00');
+  await expect(page.getByTestId('assigned-cat_rent')).toHaveText('$1,500.00');
+  await page.getByTestId('nav-history').click();
+  await expect(page.locator('[data-testid^="history-redo-"]')).toHaveCount(2);
+  await page.keyboard.press('Escape');
+  await page.getByTestId('month-label').click();
+  await page.keyboard.press('Control+y');
+  await expect(page.getByTestId('assigned-cat_groc')).toHaveText('$10.00');
 });
 
 test('suggested goals come from assignment history after a YNAB import', async ({ page }) => {

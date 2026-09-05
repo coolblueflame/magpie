@@ -66,6 +66,26 @@ test('accounts and the card ledger: far transfer row, add, split, cleared, delet
   await expect(page.getByTestId('ledger-working')).toHaveText('-$813.00');
 });
 
+test('rename and close an account; Import from a ledger preselects that account', async ({ page }) => {
+  await resetWithSeed(page);
+  await page.goto('./#/accounts');
+  await page.getByTestId('acct-menu-acc_card').locator('summary').click();
+  await page.getByTestId('acct-menu-acc_card-rename').click();
+  await page.getByTestId('acct-rename-acc_card').fill('Visa');
+  await page.getByTestId('acct-rename-acc_card').press('Enter');
+  await expect(page.getByTestId('acct-acc_card')).toContainText('Visa');
+  await page.getByTestId('acct-menu-acc_inv').locator('summary').click();
+  await page.getByTestId('acct-menu-acc_inv-close').click();
+  await expect(page.getByTestId('acct-acc_inv')).toHaveCount(0);
+  await page.getByTestId('show-closed').check();
+  await expect(page.getByTestId('acct-acc_inv')).toHaveClass(/closed/);
+
+  await page.goto('./#/account/acc_chq');
+  await page.getByTestId('import-here').click();
+  await expect(page).toHaveURL(/#\/import\/acc_chq$/);
+  await expect(page.locator('h2', { hasText: 'Import' })).toContainText('into Chequing');
+});
+
 test('a far-side row edits the owning transaction', async ({ page }) => {
   await resetWithSeed(page);
   await page.goto('./#/account/acc_card');
