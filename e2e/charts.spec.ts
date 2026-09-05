@@ -31,6 +31,7 @@ test('charts render from the seed, hover shows a tooltip, and every chart has a 
   await expect(page.getByTestId('chart-flow-table').locator('tbody tr')).toHaveCount(12);
   await expect(page.getByTestId('chart-flow-table').locator('tbody tr').last()).toContainText('$4,000.00');
 
+  await expect(page.getByTestId('chart-category-pick')).toHaveValue('cat_fun');   // first visible category by name, shown in the picker
   await page.getByTestId('chart-category-pick').selectOption('cat_groc');
   await page.getByTestId('chart-category-table-toggle').click();
   await expect(page.getByTestId('chart-category-table').locator('tbody tr').last()).toContainText('$123.45');

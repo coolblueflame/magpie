@@ -43,7 +43,7 @@
     ]} />
     <BarChart testid="chart-flow" title="Income and spending by month" series={[{ name: 'Income', points: flow.income, slot: 1 }, { name: 'Spending', points: flow.spending, slot: 2 }]} />
     <div class="catpick">
-      <label>Category <select data-testid="chart-category-pick" bind:value={categoryId}>{#each cats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}</select></label>
+      <label>Category <select data-testid="chart-category-pick" value={category?.id ?? ''} onchange={(e) => (categoryId = e.currentTarget.value)}>{#each cats as c (c.id)}<option value={c.id}>{c.name}</option>{/each}</select></label>
     </div>
     {#if category}
       <BarChart testid="chart-category" title={`${category.name}: spending by month`} series={[{ name: 'Spent', points: catSeries, slot: 1 }]} refs={catRefs} />
