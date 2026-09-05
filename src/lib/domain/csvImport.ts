@@ -12,6 +12,8 @@ export const DATE_FORMATS = ['YYYY-MM-DD', 'MM/DD/YYYY', 'DD/MM/YYYY', 'MMM D, Y
 export type DateFormat = (typeof DATE_FORMATS)[number];
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+/** Cells banks leave empty in the unused column; anything else must parse. */
+const BLANKS = new Set(['', '-', '--', '—', 'n/a', 'N/A']);
 const pad = (n: string | number) => String(n).padStart(2, '0');
 
 export function headerSignature(header: string[]): string {
@@ -69,9 +71,14 @@ export function candidatesFromCsv(rows: Record<string, string>[], profile: CsvPr
     if (!date) throw new Error(`row ${i + 2}: cannot read the date "${dateText}" as ${profile.dateFormat}`);
     let amount: number | null;
     if (profile.amountMode === 'outflow-inflow') {
-      const outflow = parseCents(cell(row, m.outflow, 'outflow') || '0') ?? 0;
-      const inflow = parseCents(cell(row, m.inflow, 'inflow') || '0') ?? 0;
-      amount = inflow - outflow;
+      const side = (what: 'outflow' | 'inflow', column: string | undefined) => {
+        const text = cell(row, column, what).trim();
+        if (BLANKS.has(text)) return 0;
+        const v = parseCents(text);
+        if (v === null) throw new Error(`row ${i + 2}: cannot read the ${what} "${text}"`);
+        return v;
+      };
+      amount = side('inflow', m.inflow) - side('outflow', m.outflow);
     } else {
       amount = parseCents(cell(row, m.amount, 'amount'));
       if (amount === null) throw new Error(`row ${i + 2}: cannot read the amount`);

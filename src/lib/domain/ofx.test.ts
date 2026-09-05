@@ -6,10 +6,11 @@ import { REGISTER_CSV } from './ynabFixture';
 describe('parseOfx', () => {
   test('a card statement with LF and timezone-suffixed dates', () => {
     const s = parseOfx(CARD_QFX);
-    expect(s.transactions).toHaveLength(4);
+    expect(s.transactions).toHaveLength(5);
+    expect(s.transactions[1]!.descriptor).toBe('M&M FOOD MARKET');
     expect(s.transactions[0]).toEqual({ date: '2026-09-03', amount: -4510, fitid: '2026090300001', name: 'GROCER MART #12 TOWNSVILLE', memo: '', trntype: 'DEBIT', descriptor: 'GROCER MART #12 TOWNSVILLE' });
-    expect(s.transactions[1]!.amount).toBe(1200);
-    expect(s.transactions[2]!.fitid).not.toBe(s.transactions[3]!.fitid);   // identical rows, distinct ids
+    expect(s.transactions[2]!.amount).toBe(1200);
+    expect(s.transactions[3]!.fitid).not.toBe(s.transactions[4]!.fitid);   // identical rows, distinct ids
     expect(s).toMatchObject({ ledgerBalance: -123456, ledgerDate: '2026-09-04', currency: 'CAD', start: '2026-08-01', end: '2026-09-04' });
     expect(s.accountRef).toMatch(/^[0-9a-f]{8}$/);
     expect(s.accountType).toBeUndefined();
@@ -28,6 +29,6 @@ describe('parseOfx', () => {
     expect(ofxCharset('OFXHEADER:100\nENCODING:USASCII\nCHARSET:1252\n')).toBe('windows-1252');
     expect(ofxCharset('OFXHEADER:100\nENCODING:UTF-8\nCHARSET:NONE\n')).toBe('utf-8');
     const bytes = new TextEncoder().encode(CARD_QFX).buffer;
-    expect(parseOfx(decodeOfx(bytes)).transactions).toHaveLength(4);
+    expect(parseOfx(decodeOfx(bytes)).transactions).toHaveLength(5);
   });
 });

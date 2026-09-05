@@ -228,6 +228,10 @@ export class AppStore {
    * the first write (PB §2.5: undo arms before the mutation).
    */
   async applyAssignments(patches: AssignmentPatch[], label: string): Promise<void> {
+    // Months before the cutover show YNAB's own numbers (spec §4.1); a write there would
+    // change nothing on screen while quietly feeding goal suggestions.
+    const cutover = this.state.settings.cutoverMonth;
+    if (cutover && patches.some((p) => p.month < cutover)) throw new Error('Months before the cutover show YNAB history and cannot be edited.');
     const withPrior = patches.map((p) => ({ ...p, prior: this.assignedOf(p.month)(p.categoryId, true) }));
     const effective = withPrior.filter((p) => (p.prior ?? 0) !== p.amount);
     if (!effective.length) return;
@@ -360,17 +364,20 @@ export class AppStore {
    * given. A `shared` choice re-derives the lines from the draft's category by
    * the §4.4 rule (the whole amount is what the user paid); `null` clears it.
    */
-  private resolveDraft(draft: TxDraft, payeeName: string | undefined, shared?: { accountId: string; percent: number } | null) {
+  private resolveDraft(draft: TxDraft, payeeName: string | undefined, shared?: { accountId: string; percent: number } | null, existing?: Transaction) {
     const payee = payeeName === undefined ? { id: draft.payeeId, edits: [] as Edit[] } : this.ensurePayee(payeeName);
     const accountsById = this.accountsById();
     let fields: ReturnType<typeof fieldsFromDraft> & { shared?: Transaction['shared'] } =
       fieldsFromDraft({ ...draft, ...(payee.id ? { payeeId: payee.id } : { payeeId: undefined }) }, accountsById);
     if (shared) {
       const categoryId = fields.lines.find((l) => !l.transferAccountId)?.categoryId;
-      const lines = sharedLines(fields.amount, -fields.amount, shared.percent, categoryId, shared.accountId);
+      // A split that came from a sheet claim remembers the total both people paid; a share
+      // set by hand covers the whole amount.
+      const total = existing?.shared?.total ?? -fields.amount;
+      const lines = sharedLines(fields.amount, total, shared.percent, categoryId, shared.accountId);
       const own = accountsById.get(fields.accountId)!;
       const missing = lines.some((l) => !l.categoryId && needsCategory(l, own, l.transferAccountId ? accountsById.get(l.transferAccountId) : undefined));
-      fields = { ...fields, lines, status: missing ? 'new' : 'ok', shared };
+      fields = { ...fields, lines, status: missing ? 'new' : 'ok', shared: { ...shared, total } };
     } else if (shared === null) {
       fields = { ...fields, shared: undefined };
     }
@@ -385,8 +392,9 @@ export class AppStore {
     return this.transaction(id);
   }
 
+  /** `shared` undefined keeps the stored share and the draft's lines as edited; an object re-derives the split; null clears it. */
   async updateTransaction(id: string, draft: TxDraft, payeeName?: string, shared?: { accountId: string; percent: number } | null): Promise<void> {
-    const { fields, edits } = this.resolveDraft(draft, payeeName, shared);
+    const { fields, edits } = this.resolveDraft(draft, payeeName, shared, this.transaction(id));
     edits.push({ table: 'transactions', id, patch: fields as Partial<Row> });
     await this.commitEdits(edits, 'edit transaction');
   }
@@ -401,10 +409,12 @@ export class AppStore {
     const claim = this.state.claims.find((c) => c.id === claimId);
     const tx = this.transaction(txId);
     if (!claim) throw new Error(`no claim ${claimId}`);
+    if (claim.status !== 'open') throw new Error('That claim is no longer open.');
+    if (tx.shared || this.state.claims.some((c) => c.transactionId === tx.id && c.status === 'applied')) throw new Error('That transaction is already shared.');
     const categoryId = tx.lines.find((l) => !l.transferAccountId)?.categoryId;
     const lines = sharedLines(tx.amount, claim.total, claim.percent, categoryId, personAccountId);
     return this.commitEdits([
-      { table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent }, status: categoryId ? 'ok' : 'new' } as Partial<Row> },
+      { table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent, total: claim.total }, status: categoryId ? 'ok' : 'new' } as Partial<Row> },
       { table: 'claims', id: claim.id, patch: { status: 'applied', transactionId: tx.id } as Partial<Row> },
     ], 'apply shared claim');
   }
@@ -535,7 +545,7 @@ export class AppStore {
 
   /** Every visible category up to its goal; returns what it took from Ready to Assign. */
   async fillAllGoals(month: MonthKey): Promise<Cents> {
-    const { patches, total } = fillPatches(this.state.categories, this.assignedOf(month), month);
+    const { patches, total } = fillPatches(this.state.categories, this.state.groups, this.assignedOf(month), month);
     await this.applyAssignments(patches, 'fill all goals');
     return total;
   }

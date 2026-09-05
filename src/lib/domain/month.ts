@@ -37,6 +37,11 @@ export function monthLabel(month: MonthKey): string {
   return `${NAMES[Number(month.slice(5, 7)) - 1]} ${month.slice(0, 4)}`;
 }
 
+/** Today's ISO date in local time; toISOString would give the UTC day, which is tomorrow every evening in the Americas. */
+export function todayKey(d: Date = new Date()): IsoDate {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 /** The month of a local-time Date; the budget follows the wall clock, not UTC. */
 export function monthKeyOf(d: Date): MonthKey {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;

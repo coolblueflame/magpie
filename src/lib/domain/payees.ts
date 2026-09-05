@@ -20,6 +20,19 @@ export function payeeLastCategory(payeeId: string, transactions: Transaction[], 
   return best?.lines[0]!.categoryId;
 }
 
+/** The pre-fill category for every payee at once, by the same rule as payeeLastCategory; one pass over the table. */
+export function payeeLastCategories(transactions: Transaction[], accountsById: Map<string, Account>): Map<string, string> {
+  const best = new Map<string, Transaction>();
+  for (const tx of transactions) {
+    if (tx.deleted || !tx.payeeId || tx.status !== 'ok' || tx.lines.length !== 1) continue;
+    const line = tx.lines[0]!;
+    if (!line.categoryId || line.transferAccountId || !accountsById.get(tx.accountId)?.onBudget) continue;
+    const b = best.get(tx.payeeId);
+    if (!b || tx.date > b.date || (tx.date === b.date && tx.updatedAt > b.updatedAt)) best.set(tx.payeeId, tx);
+  }
+  return new Map([...best].map(([id, tx]) => [id, tx.lines[0]!.categoryId!]));
+}
+
 /** How often and how recently each payee appears. */
 export function payeeUsage(transactions: Transaction[]): Map<string, { count: number; last: IsoDate }> {
   const out = new Map<string, { count: number; last: IsoDate }>();

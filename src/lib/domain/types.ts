@@ -98,8 +98,11 @@ export interface Transaction extends Row {
   /** The bank's id for this row in this account; the dedup key across imports. */
   externalId?: string;
   source: TxSource;
-  /** Present when split with a person account; percent is the other person's share. */
-  shared?: { accountId: string; percent: number };
+  /**
+   * Present when split with a person account: percent is the other person's share and
+   * total what both people paid together (absent means the whole amount, the simple case).
+   */
+  shared?: { accountId: string; percent: number; total?: Cents };
   lines: Line[];
 }
 

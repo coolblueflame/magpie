@@ -30,6 +30,22 @@ export type PlanEdit =
   | { table: 'transactions' | 'payees' | 'claims' | 'accounts'; id: string; patch: Partial<Row> & Record<string, unknown> }
   | { table: 'transactions' | 'payees' | 'claims'; id: string; create: Record<string, unknown> };
 
+/**
+ * A later patch on a row created earlier in the same list is folded into the create, so a
+ * batch never patches a row that does not exist yet and an import stays one undo entry.
+ */
+export function foldEdits(edits: PlanEdit[]): PlanEdit[] {
+  const creates = new Map<string, PlanEdit & { create: Record<string, unknown> }>();
+  const out: PlanEdit[] = [];
+  for (const e of edits) {
+    if ('create' in e) { creates.set(`${e.table}|${e.id}`, e); out.push(e); continue; }
+    const c = creates.get(`${e.table}|${e.id}`);
+    if (c) { Object.assign(c.create, e.patch); continue; }
+    out.push(e);
+  }
+  return out;
+}
+
 export interface ImportPlan {
   accountId: string;
   skipped: ImportCandidate[];
@@ -102,6 +118,9 @@ export function planImport(candidates: ImportCandidate[], accountId: string, sta
   const edits: PlanEdit[] = [];
   const matched: ImportPlan['matched'] = [];
   const matchedIds = new Set<string>();
+  // Far-side links accumulate per transaction: two of its lines matched in one file must
+  // land in one `lines` patch, or the second would overwrite the first.
+  const farLines = new Map<string, Transaction['lines']>();
   for (const p of pairs) {
     const c = byExternal.get(p.incomingId)!;
     const [txId, idxText] = p.existingId.split(':');
@@ -112,11 +131,13 @@ export function planImport(candidates: ImportCandidate[], accountId: string, sta
       edits.push({ table: 'transactions', id: tx.id, patch: { externalId: c.externalId, cleared: 'cleared' } });
     } else {
       const lineIndex = Number(idxText);
-      const lines = tx.lines.map((l, i) => (i === lineIndex ? { ...l, farExternalId: c.externalId, farCleared: 'cleared' as const } : l));
+      const lines = farLines.get(tx.id) ?? tx.lines.map((l) => ({ ...l }));
+      lines[lineIndex] = { ...lines[lineIndex]!, farExternalId: c.externalId, farCleared: 'cleared' };
+      farLines.set(tx.id, lines);
       matched.push({ candidate: c, txId: tx.id, side: 'far', lineIndex });
-      edits.push({ table: 'transactions', id: tx.id, patch: { lines } });
     }
   }
+  for (const [txId, lines] of farLines) edits.push({ table: 'transactions', id: txId, patch: { lines } });
 
   const resolver = new PayeeResolver(state.payees, ids);
   const created = pending.filter((c) => !matchedIds.has(c.externalId));

@@ -55,7 +55,7 @@ export function decodeOfx(bytes: ArrayBuffer): string {
 function fieldOf(block: string, tag: string): string | undefined {
   // SGML tags are unclosed; the value runs to the end of the line or the next tag.
   const m = new RegExp(`<${tag}>([^\\r\\n<]*)`).exec(block);
-  return m ? m[1]!.trim() : undefined;
+  return m ? m[1]!.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').trim() : undefined;
 }
 
 function isoDate(v: string | undefined): IsoDate | undefined {

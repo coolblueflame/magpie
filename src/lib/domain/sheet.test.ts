@@ -81,13 +81,24 @@ describe('planSheet and planClaims', () => {
     expect(again.skipped).toBe(2);
   });
 
+  test('rows and bank rows before the cutover are left alone', () => {
+    let k = 0;
+    const plan = planSheet(rows, 'acc_partner', state, 1000, () => `c${++k}`, '2026-09-05');
+    expect(plan.claims).toEqual([]);
+    expect(plan.partnerPaid).toEqual([]);
+    expect(plan.skipped).toBe(2);
+    const open = planSheet(rows, 'acc_partner', state, 1000, () => `d${++k}`).claims;
+    const r = planClaims(open, s.transactions, accountsById, 'acc_partner', () => '', '2026-10');
+    expect(r.applied).toEqual([]);
+  });
+
   test('planClaims splits the matching card row and closes the claim', () => {
     const plan = planSheet(rows, 'acc_partner', state, 1000, ids);
     const r = planClaims(plan.claims, s.transactions, accountsById, 'acc_partner', (id) => s.payees.find((p) => p.id === id)?.name ?? '');
     expect(r.applied).toEqual([{ claimId: plan.claims[0]!.id, txId: 'seed_t13' }]);
     const patch = (r.edits[0] as { patch: Partial<Transaction> }).patch;
     expect(patch.lines).toEqual([{ amount: -8024, memo: '', categoryId: 'cat_groc' }, { transferAccountId: 'acc_partner', amount: -4321, memo: '' }]);
-    expect(patch.shared).toEqual({ accountId: 'acc_partner', percent: 35 });
+    expect(patch.shared).toEqual({ accountId: 'acc_partner', percent: 35, total: 12345 });
     expect(patch.status).toBe('ok');
     expect(r.edits[1]).toMatchObject({ table: 'claims', patch: { status: 'applied', transactionId: 'seed_t13' } });
   });

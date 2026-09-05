@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { planImport, type ImportCandidate, type ImportState } from './importPlan';
+import { foldEdits, planImport, type ImportCandidate, type ImportState, type PlanEdit } from './importPlan';
 import { seedData } from './seed';
 import type { Transaction } from './types';
 
@@ -60,6 +60,30 @@ describe('planImport', () => {
     expect(plan.matched.map((m) => m.txId)).toEqual(['y']);
     expect(plan.edits.find((e) => 'patch' in e && e.id === 'y')).toMatchObject({ patch: { externalId: 'fitid:new1' } });
     expect(plan.created.map((c) => c.externalId)).toEqual(['fitid:new2']);
+  });
+
+  test('foldEdits merges a patch into an earlier create of the same row and leaves others alone', () => {
+    const edits: PlanEdit[] = [
+      { table: 'claims', id: 'c1', create: { status: 'open', total: 5 } },
+      { table: 'transactions', id: 't9', patch: { status: 'ok' } },
+      { table: 'claims', id: 'c1', patch: { status: 'applied', transactionId: 't9' } },
+    ];
+    expect(foldEdits(edits)).toEqual([
+      { table: 'claims', id: 'c1', create: { status: 'applied', total: 5, transactionId: 't9' } },
+      { table: 'transactions', id: 't9', patch: { status: 'ok' } },
+    ]);
+  });
+
+  test('two far-side lines of one transaction matched in one plan keep both links', () => {
+    const s = stateFrom();
+    const twin: Transaction = { ...s.transactions[0]!, id: 'tw', accountId: 'acc_chq', date: '2026-09-02', amount: -3000, lines: [
+      { transferAccountId: 'acc_card', amount: -1000, memo: '' }, { transferAccountId: 'acc_card', amount: -2000, memo: '' }] };
+    delete (twin as Partial<Transaction>).externalId;
+    s.transactions = [...s.transactions, twin];
+    const plan = planImport([cand('f1', '2026-09-03', 1000, 'PAYMENT'), cand('f2', '2026-09-03', 2000, 'PAYMENT')], 'acc_card', s);
+    const patches = plan.edits.filter((e) => 'patch' in e && e.id === 'tw') as unknown as { patch: { lines: { farExternalId?: string }[] } }[];
+    expect(patches).toHaveLength(1);
+    expect(patches[0]!.patch.lines.map((l) => l.farExternalId)).toEqual(['f1', 'f2']);
   });
 
   test('a matched candidate never creates; unknown account throws', () => {

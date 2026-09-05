@@ -100,13 +100,18 @@ export interface SheetPlan {
   edits: PlanEdit[];
 }
 
-/** Rows the sheet contributes: claims for what the user paid, person-account rows for what the partner paid. Idempotent by row key. */
-export function planSheet(rows: SheetRow[], personAccountId: string, state: ImportState & { claims: ShareClaim[] }, now: number, ids: () => string): SheetPlan {
+/**
+ * Rows the sheet contributes: claims for what the user paid, person-account rows for what
+ * the partner paid. Idempotent by row key. Rows before the cutover are skipped: that
+ * history already came in with the YNAB import (spec §5.4).
+ */
+export function planSheet(rows: SheetRow[], personAccountId: string, state: ImportState & { claims: ShareClaim[] }, now: number, ids: () => string, cutoverMonth?: string): SheetPlan {
   const knownClaims = new Set(state.claims.filter((c) => !c.deleted).map((c) => c.id));
   const claims: ShareClaim[] = [];
   const partnerPaid: ImportCandidate[] = [];
   let skipped = 0;
   for (const r of rows) {
+    if (cutoverMonth && r.date.slice(0, 7) < cutoverMonth) { skipped++; continue; }
     const total = r.mine + r.theirs;
     if (r.mine === 0) {
       const { mine } = shareSplit(total, r.percent);
@@ -139,9 +144,10 @@ export interface ClaimsPlan {
  * Pair open claims with bank rows the user paid (same amount as the claim's
  * `paid`, within the posting window, similar descriptor) and split them.
  */
-export function planClaims(openClaims: ShareClaim[], transactions: Transaction[], accountsById: Map<string, Account>, personAccountId: string, payeeName: (id?: string) => string): ClaimsPlan {
+export function planClaims(openClaims: ShareClaim[], transactions: Transaction[], accountsById: Map<string, Account>, personAccountId: string, payeeName: (id?: string) => string, cutoverMonth?: string): ClaimsPlan {
   const eligible = transactions.filter((t) => {
     const a = accountsById.get(t.accountId);
+    if (cutoverMonth && t.date.slice(0, 7) < cutoverMonth) return false;
     return !t.deleted && a?.onBudget && a.kind !== 'person' && t.lines.length === 1 && !t.lines[0]!.transferAccountId && !t.shared;
   });
   const { pairs } = matchTransactions(
@@ -158,7 +164,7 @@ export function planClaims(openClaims: ShareClaim[], transactions: Transaction[]
     const categoryId = tx.lines[0]!.categoryId;
     const lines = sharedLines(tx.amount, claim.total, claim.percent, categoryId, personAccountId);
     const needsCategory = lines.some((l) => !l.transferAccountId && !l.categoryId);
-    edits.push({ table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent }, status: needsCategory ? 'new' : 'ok' } });
+    edits.push({ table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent, total: claim.total }, status: needsCategory ? 'new' : 'ok' } });
     edits.push({ table: 'claims', id: claim.id, patch: { status: 'applied', transactionId: tx.id } });
     applied.push({ claimId: claim.id, txId: tx.id });
   }

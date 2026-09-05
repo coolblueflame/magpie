@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { addMonths, compareMonths, maxMonth, minMonth, monthKeyOf, monthLabel, monthOf, monthsBetween } from './month';
+import { addMonths, compareMonths, maxMonth, minMonth, monthKeyOf, monthLabel, monthOf, monthsBetween, todayKey } from './month';
 
 describe('month keys', () => {
   test('monthOf takes the first seven characters of an ISO date', () => {
@@ -25,5 +25,6 @@ describe('month keys', () => {
   test('label and local key', () => {
     expect(monthLabel('2026-09')).toBe('Sep 2026');
     expect(monthKeyOf(new Date(2026, 8, 4, 23, 59))).toBe('2026-09');
+    expect(todayKey(new Date(2026, 8, 4, 23, 59))).toBe('2026-09-04');
   });
 });

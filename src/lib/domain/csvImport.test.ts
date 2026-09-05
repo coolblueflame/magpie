@@ -51,5 +51,7 @@ describe('candidatesFromCsv', () => {
     expect(candidatesFromCsv([{ Date: '2026-09-04', Description: 'x', Amount: '5.00' }], neg, 'b')[0]!.amount).toBe(-500);
     expect(() => candidatesFromCsv([{ Date: '2026-09-04', Description: 'x' }], profile(), 'b')).toThrow(/"Amount" is not in this file/);
     expect(() => candidatesFromCsv([{ Date: 'bad', Description: 'x', Amount: '1' }], profile(), 'b')).toThrow(/row 2/);
+    expect(() => candidatesFromCsv([{ D: '09/04/2026', P: 'Shop', Out: '12.345', In: '', Ref: 'A3' }], io, 'b')).toThrow(/cannot read the outflow "12.345"/);
+    expect(candidatesFromCsv([{ D: '09/04/2026', P: 'Shop', Out: '--', In: '5.00', Ref: 'A4' }], io, 'b')[0]!.amount).toBe(500);
   });
 });

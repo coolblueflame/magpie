@@ -80,6 +80,24 @@ describe('ready to assign', () => {
     expect(b.horizon).toBe('2026-11');
     expect(b.onBudgetTotal).toBe(100000);
   });
+  test('a post-dated spend lowers its category, not RTA, in every month view', () => {
+    const input = base({
+      transactions: [spend('chq', '2026-09-01', RTA, 200000), spend('chq', '2026-10-01', 'groc', -100000)],
+      assignments: [asg('groc', '2026-09', 100000)],
+    });
+    expect(computeBudget(input, '2026-09')).toMatchObject({ rta: 100000, horizon: '2026-10' });
+    expect(computeBudget(input, '2026-10').rta).toBe(100000);
+    expect(computeBudget(input, '2026-10').rows.get('groc')!.available).toBe(0);
+    // A post-dated uncategorised row is held aside the same way.
+    const unc = base({ transactions: [spend('chq', '2026-09-01', RTA, 200000), spend('chq', '2026-10-01', undefined, -500)] });
+    expect(computeBudget(unc, '2026-09')).toMatchObject({ rta: 200000, uncategorised: -500 });
+  });
+  test('a cutover ahead of the clock still keeps the identity', () => {
+    const input = base({ cutoverMonth: '2026-10', categories: [cat('groc', 5000)], transactions: [spend('chq', '2026-09-01', RTA, 20000)] });
+    const b = computeBudget(input, '2026-09');
+    expect(b.horizon).toBe('2026-10');
+    expect(b.rta).toBe(20000 - 5000);
+  });
   test('an uncategorised new transaction is held aside, not taken from RTA', () => {
     const input = base({
       transactions: [spend('chq', '2026-09-01', RTA, 100000), spend('chq', '2026-09-02', undefined, -4200)],

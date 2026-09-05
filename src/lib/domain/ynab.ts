@@ -153,6 +153,20 @@ export interface YnabBuildOptions {
   now: number;
   /** Row id source; tests pass a counter for stable ids. */
   idFor?: () => string;
+  /** Override for the cutover month; see defaultCutoverMonth. */
+  cutoverMonth?: MonthKey;
+}
+
+/**
+ * The month Magpie's rules take over: the month of the latest register row,
+ * capped by the latest Plan month. The Plan alone would move the cutover into
+ * the future whenever money was assigned ahead in YNAB.
+ */
+export function defaultCutoverMonth(register: YnabRegisterRow[], plan: YnabPlanRow[]): MonthKey {
+  const planMax = plan.reduce((m, r) => (r.month > m ? r.month : m), plan[0]?.month ?? '');
+  const registerMax = register.reduce((m, r) => (r.date.slice(0, 7) > m ? r.date.slice(0, 7) : m), '');
+  if (!planMax) throw new Error('the Plan file has no rows');
+  return registerMax && registerMax < planMax ? registerMax : planMax;
 }
 
 export interface YnabReport {
@@ -208,7 +222,7 @@ export function buildYnabImport(register: YnabRegisterRow[], plan: YnabPlanRow[]
   const stamp = () => ({ updatedAt: now, editedAt: now, deleted: false as const });
   const batchId = `ynab-${now}`;
   if (!plan.length) throw new Error('the Plan file has no rows');
-  const cutoverMonth = plan.reduce((m, r) => (r.month > m ? r.month : m), plan[0]!.month);
+  const cutoverMonth = opts.cutoverMonth ?? defaultCutoverMonth(register, plan);
 
   // Groups and categories from the Plan, in order of first appearance.
   const groups = new Map<string, CategoryGroup>();

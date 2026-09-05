@@ -1,5 +1,15 @@
 import { addMonths } from './month';
-import type { Category, Cents, MonthKey } from './types';
+import type { Category, CategoryGroup, Cents, MonthKey } from './types';
+
+/** What the budget screen shows without "show hidden": the category and its group both unhidden. */
+export function isVisibleCategory(c: Category, groupsById: Map<string, CategoryGroup>): boolean {
+  return !c.deleted && !c.hidden && !(groupsById.get(c.groupId)?.hidden ?? false);
+}
+
+export function visibleCategories(categories: Category[], groups: CategoryGroup[]): Category[] {
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  return categories.filter((c) => isVisibleCategory(c, byId));
+}
 
 export interface AssignmentPatch {
   categoryId: string;
@@ -31,11 +41,11 @@ export function suggestGoal(assigned: Map<MonthKey, Cents> | undefined, currentM
 }
 
 /** Patches that bring every visible category with assigned < goal up to its goal, and what that costs. */
-export function fillPatches(categories: Category[], assignedOf: (categoryId: string) => Cents, month: MonthKey): { patches: AssignmentPatch[]; total: Cents } {
+export function fillPatches(categories: Category[], groups: CategoryGroup[], assignedOf: (categoryId: string) => Cents, month: MonthKey): { patches: AssignmentPatch[]; total: Cents } {
   const patches: AssignmentPatch[] = [];
   let total = 0;
-  for (const c of categories) {
-    if (c.deleted || c.hidden || c.goal <= 0) continue;
+  for (const c of visibleCategories(categories, groups)) {
+    if (c.goal <= 0) continue;
     const assigned = assignedOf(c.id);
     if (assigned >= c.goal) continue;
     patches.push({ categoryId: c.id, month, amount: c.goal });

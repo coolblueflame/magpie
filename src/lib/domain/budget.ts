@@ -28,7 +28,7 @@ export interface BudgetMonth {
   /** Lines on `new` transactions that touch the budget but have no category yet. */
   uncategorised: Cents;
   onBudgetTotal: Cents;
-  /** The later of the current month and the last month anything is assigned to. */
+  /** The latest of the current month, the last month assigned to, and the last month with budget activity. */
   horizon: MonthKey;
   /** Budget-effect activity per category per month, all time; feeds the stats columns. */
   activityByCategory: Map<string, Map<MonthKey, Cents>>;
@@ -52,6 +52,7 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
   const activityByCategory = new Map<string, Map<MonthKey, Cents>>();
   let uncategorised = 0;
   let earliest: MonthKey | undefined;
+  let lastActivity: MonthKey | undefined;
   for (const tx of input.transactions) {
     if (tx.deleted) continue;
     const own = accountsById.get(tx.accountId);
@@ -61,6 +62,7 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
       const far = line.transferAccountId ? accountsById.get(line.transferAccountId) : undefined;
       if (!needsCategory(line, own, far)) continue;
       const effect = lineEffect(line, own, far);
+      lastActivity = lastActivity ? maxMonth(lastActivity, m) : m;
       if (line.categoryId) {
         let byMonth = activityByCategory.get(line.categoryId);
         if (!byMonth) { byMonth = new Map(); activityByCategory.set(line.categoryId, byMonth); }
@@ -84,7 +86,11 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
   const history = new Map<string, YnabHistory>();
   for (const h of input.history) if (!h.deleted) history.set(key(h.categoryId, h.month), h);
 
-  const horizon = lastAssigned ? maxMonth(input.currentMonth, lastAssigned) : input.currentMonth;
+  // The identity RTA = balances − Σ available(horizon) − uncategorised only holds when the
+  // horizon is at or after every month with an assignment OR budget activity: a post-dated
+  // rent cheque lowers the balance now and must lower its category's available in the same
+  // sum. A cutover ahead of the clock counts too, since the walk starts there.
+  const horizon = maxMonth(input.currentMonth, lastAssigned ?? input.currentMonth, lastActivity ?? input.currentMonth, input.cutoverMonth ?? input.currentMonth);
   const start = input.cutoverMonth ?? earliest ?? month;
   const end = maxMonth(month, horizon);
 

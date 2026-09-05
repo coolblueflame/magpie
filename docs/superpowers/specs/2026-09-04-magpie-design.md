@@ -98,8 +98,10 @@ Line: { categoryId?, transferAccountId?, amount, memo,
   of the source row when the format has no id). Unique per account; the dedup key across
   repeated imports. `source`: `{ kind: 'ynab' | 'ofx' | 'csv' | 'sheet' | 'manual',
   profileId?, batchId }` for the import summary and troubleshooting.
-- `shared`: `{ accountId, percent }` when the transaction is split with a person account;
-  `percent` is the other person's share. Editing it re-derives the two lines (§4.4).
+- `shared`: `{ accountId, percent, total? }` when the transaction is split with a person
+  account; `percent` is the other person's share, `total` what both paid together (absent:
+  the whole amount). Changing the share re-derives the two lines from `total` (§4.4);
+  saving other edits leaves the lines as edited.
 - Transfers are **one row** shown in both ledgers (§4.3); `farCleared` / `farExternalId`
   hold the other account's cleared state and bank id.
 
@@ -144,8 +146,9 @@ available(c, cutover − 1) = anchor(c)
 `anchor(c)` is `Category.carriedIn`: what YNAB carried into the cutover month, derived at
 import as `ynabAvailable(c, cutover) − ynabAssigned(c, cutover) − ynabActivity(c, cutover)`
 so the cutover month matches YNAB to the penny on day one. From then on the Magpie rule applies and
-negatives carry. Months with no rows are computed, not stored; future months compute the same
-way (assignments may exist, activity is zero).
+negatives carry. Months before cutover are read-only on every screen. Months with no rows
+are computed, not stored; future months compute the same way (assignments may exist, activity
+is zero).
 
 ### 4.2 Ready to Assign
 
@@ -153,7 +156,8 @@ One global number, derived from the conservation identity rather than tracked:
 
 ```
 uncategorised = Σ amount of lines with no categoryId on `new` transactions in on-budget accounts
-M*            = max(current month, latest month with any assignment)
+M*            = max(current month, latest month with an assignment, latest month with budget
+                activity, cutover month)
 RTA           = Σ balance(on-budget accounts) − Σ_c available(c, M*) − uncategorised
 ```
 
@@ -229,7 +233,8 @@ pre-filled" confirms the ones whose category came from payee memory, listing the
 ### 4.7 Undo
 
 Session-only undo, 12 deep, for every mutation (PB §2.12). Armed before the mutation.
-Bulk actions (confirm all, import) undo as one entry. Armed confirm for anything touching
+Bulk actions (confirm all, import including any claims it applies) undo as one entry. A toast's
+Undo targets the entry it announces, never merely the newest. Armed confirm for anything touching
 more than a handful of rows (PB §4 UX patterns).
 
 ## 5. Import
@@ -270,7 +275,9 @@ Activity, Available. Money cells are formatted strings (`$1,234.56`); parse to c
   - `externalId` is a stable hash of the source row so a re-import is a no-op.
 - Plan rows for months before `cutoverMonth` become `YnabHistory`; assignments for every
   month become `Assignment` rows (history charts want them); the cutover anchors follow §4.1.
-- `cutoverMonth` is the month of the export.
+- `cutoverMonth` defaults to the month of the latest register row, capped by the latest Plan
+  month (money assigned ahead in YNAB must not move the cutover), and can be overridden on
+  the import screen.
 - Verification before commit: per-account balances and per-category availability for the
   cutover month are recomputed from the imported rows and compared with the export's own
   numbers; any mismatch is shown to the penny and blocks commit until acknowledged.

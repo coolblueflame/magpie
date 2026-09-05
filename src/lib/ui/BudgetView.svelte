@@ -51,7 +51,7 @@
     .map((c) => ({ categoryId: c.id, goal: suggestionFor(c) }))
     .filter((s): s is { categoryId: string; goal: Cents } => s.goal !== null));
 
-  const fill = $derived(fillPatches(app.state.categories, app.assignedOf(month), month));
+  const fill = $derived(fillPatches(app.state.categories, app.state.groups, app.assignedOf(month), month));
   let fillArmed = $state(false);
   let fillTimer: ReturnType<typeof setTimeout> | undefined;
   async function fillAll() {

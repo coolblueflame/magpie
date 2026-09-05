@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import {
-  buildYnabImport, inferAccounts, isYnabPlan, isYnabRegister, parseYnabDate, parseYnabMoney, parseYnabMonth,
+  buildYnabImport, defaultCutoverMonth, inferAccounts, isYnabPlan, isYnabRegister, parseYnabDate, parseYnabMoney, parseYnabMonth,
   readYnabPlan, readYnabRegister,
 } from './ynab';
 import { lineEffect, validateTransaction } from './ledger';
@@ -139,6 +139,17 @@ describe('buildYnabImport on the fixture', () => {
       { name: 'Partner', working: 1200 }, { name: 'Brokerage', working: 20900 },
     ]);
   });
+  test('the cutover follows the register, not months assigned ahead in the Plan; an override wins', () => {
+    const reg = readYnabRegister(REGISTER_CSV);
+    const plan = readYnabPlan(PLAN_CSV);
+    expect(defaultCutoverMonth(reg, plan)).toBe('2026-09');
+    const ahead = [...plan, { ...plan[plan.length - 1]!, month: '2026-11', assigned: 100, activity: 0, available: 100 }];
+    expect(defaultCutoverMonth(reg, ahead)).toBe('2026-09');
+    const opts = { accounts: { Chequing: { kind: 'chequing' as const, onBudget: true }, Card: { kind: 'credit' as const, onBudget: true }, Partner: { kind: 'other' as const, onBudget: false, person: true }, Brokerage: { kind: 'investment' as const, onBudget: false } }, now: 1 };
+    expect(buildYnabImport(reg, ahead, opts).cutoverMonth).toBe('2026-09');
+    expect(buildYnabImport(reg, plan, { ...opts, cutoverMonth: '2026-08' }).cutoverMonth).toBe('2026-08');
+  });
+
   test('a register account without a choice is an error', () => {
     expect(() => buildYnabImport(readYnabRegister(REGISTER_CSV), readYnabPlan(PLAN_CSV), { accounts: {}, now: 1 })).toThrow(/no import choice/);
   });
