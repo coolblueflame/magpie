@@ -15,6 +15,8 @@ import {
   type Payee, type Row, type Settings, type ShareClaim, type Transaction, type YnabHistory,
 } from '../domain/types';
 import type { MagpieDb } from './db';
+import { canonical, supersedes } from '../sync/merge';
+import { ROW_TABLES } from '../sync/files';
 
 export type TableName =
   | 'accounts' | 'groups' | 'categories' | 'assignments' | 'transactions'
@@ -168,6 +170,40 @@ export class Repo {
   /** Write settings and their stamp exactly as given: a backup restore keeps the merge key it had. */
   async restoreSettings(data: Partial<Settings>, updatedAt: number): Promise<void> {
     await this.db.kv.put({ key: 'settings', value: { data: { ...data }, updatedAt } });
+  }
+
+  /**
+   * Write-back after a sync merge (PB §2.6). Not a swap: the merge ran against
+   * a snapshot read seconds earlier, so every incoming row is re-checked with
+   * the merge rule against what is on disk NOW, inside one transaction. A
+   * user edit made during the cycle survives; a tombstone is overruled only by
+   * a genuinely newer edit.
+   */
+  async replaceAll(snap: Snapshot): Promise<void> {
+    const tables = ROW_TABLES.map((t) => this.table(t));
+    await this.db.transaction('rw', [...tables, this.db.kv], async () => {
+      for (const t of ROW_TABLES) {
+        const table = this.table(t);
+        const mine = new Map((await table.toArray()).map((r) => [r.id, r]));
+        const writes = (snap[t] as Row[]).filter((r) => { const m = mine.get(r.id); return !m || supersedes(r, m); });
+        if (writes.length) await table.bulkPut(writes);
+      }
+      const row = await this.db.kv.get('settings');
+      const prior = (row?.value ?? { data: {}, updatedAt: 0 }) as Stamped<Partial<Settings>>;
+      const newer = snap.settingsUpdatedAt > prior.updatedAt
+        || (snap.settingsUpdatedAt === prior.updatedAt && canonical(snap.settings) < canonical(prior.data));
+      if (newer) await this.db.kv.put({ key: 'settings', value: { data: { ...snap.settings }, updatedAt: snap.settingsUpdatedAt } });
+    });
+  }
+
+  /** Device-local values (the sync token, the file cache): never in a snapshot, never in a backup. */
+  async getDevice<T>(key: string): Promise<T | undefined> {
+    return (await this.db.device.get(key))?.value as T | undefined;
+  }
+
+  async setDevice(key: string, value: unknown): Promise<void> {
+    if (value === undefined) await this.db.device.delete(key);
+    else await this.db.device.put({ key, value });
   }
 
   /** Drop the whole database. The caller must open a fresh one afterwards. */

@@ -5,6 +5,20 @@ import { seedData } from '../domain/seed';
 import { computeBudget } from '../domain/budget';
 import { RTA, type Category } from '../domain/types';
 import { draftFromTransaction, emptyDraft } from '../domain/transactions';
+import type { RemoteFile, RemoteFileEntry } from '../sync/githubClient';
+import type { SyncClient } from './app.svelte';
+
+/** The engine test's fake, plus checkAuth. */
+class FakeClient implements SyncClient {
+  files = new Map<string, { json: unknown; sha: string }>();
+  puts: string[] = [];
+  private n = 0;
+  async checkAuth() { return { ok: true }; }
+  async listFiles(): Promise<RemoteFileEntry[]> { return [...this.files].map(([path, f]) => ({ path, sha: f.sha })); }
+  async getFile(path: string): Promise<RemoteFile | null> { const f = this.files.get(path); return f ? { json: JSON.parse(JSON.stringify(f.json)), sha: f.sha } : null; }
+  async putFile(path: string, json: unknown): Promise<string> { const sha = `s${++this.n}`; this.files.set(path, { json: JSON.parse(JSON.stringify(json)), sha }); this.puts.push(path); return sha; }
+}
+const settle = (ms = 40) => new Promise((r) => setTimeout(r, ms));
 import { buildYnabImport, readYnabPlan, readYnabRegister } from '../domain/ynab';
 import { PLAN_CSV, REGISTER_CSV } from '../domain/ynabFixture';
 
@@ -222,6 +236,50 @@ describe('AppStore', () => {
     expect(s.state.transactions.find((t) => t.id === 'seed_t14')!.payeeId).toBe('pay_mystery');
     expect(s.state.payees.find((p) => p.id === 'pay_arcade')!.aliases).toEqual([]);
     expect(s.ensurePayee('MYSTERY').id).toBe('pay_mystery');
+  });
+
+  test('sync: connect pushes, every write requests a sync, a second device pulls the edit, disconnect stops it', async () => {
+    const client = new FakeClient();
+    const a = await fresh();
+    a.clientFactory = () => client;
+    a.syncDebounceMs = 5;
+    await a.loadSeed();
+    await a.connectSync({ owner: 'o', repo: 'magpie-data', token: 'tok' });
+    expect(a.syncStatus).toBe('idle');
+    expect(a.syncTarget).toEqual({ owner: 'o', repo: 'magpie-data' });
+    expect(client.files.has('active.json')).toBe(true);
+    expect(JSON.stringify(await a.exportJson())).not.toContain('tok');
+
+    const before = client.puts.length;
+    await a.setAssigned('cat_fun', a.currentMonth, 12300);
+    await settle();
+    expect(client.puts.slice(before)).toEqual(['assignments.json']);
+
+    const b = await fresh();
+    b.clientFactory = () => client;
+    await b.connectSync({ owner: 'o', repo: 'magpie-data', token: 'tok' });
+    expect(b.state.assignments.find((x) => x.categoryId === 'cat_fun' && x.month === a.currentMonth)!.amount).toBe(12300);
+    expect(b.state.transactions).toHaveLength(a.state.transactions.length);
+
+    // A reopened store resumes syncing from the device config without asking again.
+    const again = new AppStore();
+    again.clientFactory = () => client;
+    await again.init(a.dbName);
+    expect(again.syncTarget).toEqual({ owner: 'o', repo: 'magpie-data' });
+
+    await a.disconnectSync();
+    expect(a.syncStatus).toBe('disabled');
+    const putsAfter = client.puts.length;
+    await a.setAssigned('cat_fun', a.currentMonth, 100);
+    await settle();
+    expect(client.puts.length).toBe(putsAfter);
+  });
+
+  test('sync: a rejected token never saves a config', async () => {
+    const s = await fresh();
+    s.clientFactory = () => Object.assign(new FakeClient(), { checkAuth: async () => ({ ok: false, error: 'Token rejected' }) });
+    await expect(s.connectSync({ owner: 'o', repo: 'r', token: 'bad' })).rejects.toThrow(/rejected/);
+    expect(s.syncStatus).toBe('disabled');
   });
 
   test('setAssigned creates a row where none existed and undo removes it', async () => {

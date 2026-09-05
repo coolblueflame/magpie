@@ -19,6 +19,11 @@ import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
 import { Repo, type AppState, type Snapshot, type TableName } from '../storage/repo';
 import { undoStack } from './undo.svelte';
+import { SyncEngine, type ClientLike, type FileCache, type SyncStatus } from '../sync/engine';
+import { GithubClient, type SyncConfig } from '../sync/githubClient';
+
+/** What connectSync needs from a client; the default is the real GithubClient, tests inject a fake. */
+export type SyncClient = ClientLike & { checkAuth(): Promise<{ ok: boolean; error?: string }> };
 
 /** localStorage key; '1' seeds an empty database at boot (e2e uses it). */
 export const SEED_FLAG = 'magpie:seed';
@@ -45,6 +50,66 @@ export class AppStore {
   dbName = 'magpie';
   private repo!: Repo;
 
+  // ── sync (spec §7) ──────────────────────────────────────────────────────
+  syncStatus = $state<SyncStatus>('disabled');
+  syncDetail = $state('');
+  lastSyncAt = $state<number | null>(null);
+  /** Owner and repo for display; the token stays in the device table. */
+  syncTarget = $state<{ owner: string; repo: string } | null>(null);
+  /** Test seam: replaces the real GitHub client. */
+  clientFactory: (cfg: SyncConfig) => SyncClient = (cfg) => new GithubClient(cfg);
+  /** Test seam: the debounce after a write. */
+  syncDebounceMs = 4000;
+  private engine: SyncEngine | null = null;
+
+  private startEngine(cfg: SyncConfig): void {
+    this.engine?.dispose();
+    const engine = new SyncEngine({
+      client: this.clientFactory(cfg),
+      loadLocal: () => this.repo.loadSnapshot(),
+      saveLocal: async (snap) => { await this.repo.replaceAll(snap); await this.hydrate(); },
+      loadCache: async () => (await this.repo.getDevice<FileCache>('fileCache')) ?? null,
+      saveCache: (cache) => this.repo.setDevice('fileCache', cache),
+      debounceMs: this.syncDebounceMs,
+    });
+    engine.onStatus = (status, detail) => {
+      this.syncStatus = status;
+      this.syncDetail = detail;
+      if (status === 'idle') this.lastSyncAt = Date.now();
+    };
+    this.engine = engine;
+    this.syncTarget = { owner: cfg.owner, repo: cfg.repo };
+    this.syncStatus = 'idle';
+  }
+
+  /** Verify the token, remember the config on this device only, and run a first cycle. */
+  async connectSync(cfg: SyncConfig): Promise<void> {
+    const check = await this.clientFactory(cfg).checkAuth();
+    if (!check.ok) throw new Error(check.error ?? 'GitHub rejected the connection.');
+    await this.repo.setDevice('syncConfig', cfg);
+    this.startEngine(cfg);
+    await this.engine!.syncNow();
+  }
+
+  async disconnectSync(): Promise<void> {
+    this.engine?.dispose();
+    this.engine = null;
+    await this.repo.setDevice('syncConfig', undefined);
+    await this.repo.setDevice('fileCache', undefined);
+    this.syncTarget = null;
+    this.syncStatus = 'disabled';
+    this.syncDetail = '';
+  }
+
+  syncNow(): Promise<void> {
+    return this.engine?.syncNow() ?? Promise.resolve();
+  }
+
+  /** Called at the end of every write path; the engine debounces. */
+  private touched(): void {
+    this.engine?.requestSync();
+  }
+
   /** Hydrate from the database. `seed: false` after a delete-all so the e2e seed flag cannot refill it. */
   async init(dbName = 'magpie', { seed = true } = {}): Promise<void> {
     this.dbName = dbName;
@@ -55,6 +120,8 @@ export class AppStore {
     }
     await this.hydrate();
     void this.requestPersistence();
+    const cfg = await this.repo.getDevice<SyncConfig>('syncConfig');
+    if (cfg) { this.startEngine(cfg); void this.engine!.syncNow(); }
     this.ready = true;
   }
 
@@ -72,6 +139,7 @@ export class AppStore {
     await this.repo.importRows(seedData(this.currentMonth));
     await this.hydrate();
     undoStack.clear();
+    this.touched();
   }
 
   private async assertEmpty(): Promise<void> {
@@ -86,6 +154,7 @@ export class AppStore {
     await this.repo.updateSettings({ cutoverMonth: build.cutoverMonth });
     await this.hydrate();
     undoStack.clear();
+    this.touched();
   }
 
   /** The whole database as pretty JSON, tombstones included: the backup until sync exists. */
@@ -107,11 +176,16 @@ export class AppStore {
     if (data.settings && Object.keys(data.settings).length) await this.repo.restoreSettings(data.settings, data.settingsUpdatedAt ?? Date.now());
     await this.hydrate();
     undoStack.clear();
+    this.touched();
   }
 
   /** Drop everything and come back up empty. Irreversible; the UI arms this behind a second click. */
   async deleteAllData(): Promise<void> {
     this.ready = false;
+    this.engine?.dispose();
+    this.engine = null;
+    this.syncTarget = null;
+    this.syncStatus = 'disabled';
     await this.repo.deleteDatabase();
     Object.assign(this.state, { accounts: [], groups: [], categories: [], assignments: [], transactions: [], payees: [], claims: [], profiles: [], history: [], settings: { ...DEFAULT_SETTINGS }, settingsUpdatedAt: 0 });
     undoStack.clear();
@@ -128,6 +202,7 @@ export class AppStore {
     const i = this.state.assignments.findIndex((a) => a.id === row.id);
     if (i === -1) this.state.assignments.push(row);
     else Object.assign(this.state.assignments[i]!, row);
+    this.touched();
   }
 
   /**
@@ -188,6 +263,7 @@ export class AppStore {
   private async writePatch<T extends Row>(table: TableName, id: string, patch: Partial<T>): Promise<void> {
     const row = await this.repo.patch<T>(table, id, patch);
     if (row) this.applyToMirror(table, row);
+    this.touched();
   }
 
   /**
@@ -220,6 +296,7 @@ export class AppStore {
     };
     undoStack.push(label, revert, () => apply(false));
     await apply(true);
+    this.touched();
   }
 
   /** One undoable patch. Undo restores exactly the keys the patch touched, as they were. */
@@ -402,6 +479,7 @@ export class AppStore {
     if (existing) { await this.writePatch('profiles', existing.id, profile as Partial<Row>); return this.state.profiles.find((p) => p.id === existing.id)!; }
     const row = await this.repo.create<CsvProfile>('profiles', profile);
     this.applyToMirror('profiles', row);
+    this.touched();
     return row;
   }
 
@@ -409,6 +487,7 @@ export class AppStore {
     const updatedAt = await this.repo.updateSettings(patch);
     Object.assign(this.state.settings, patch);
     this.state.settingsUpdatedAt = updatedAt;
+    this.touched();
   }
 
   // ── budget management (phase 3a) ────────────────────────────────────────

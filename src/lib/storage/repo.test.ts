@@ -70,6 +70,38 @@ describe('Repo', () => {
     expect(await repo.getSettings()).toEqual({ currency: 'CAD', cutoverMonth: '2026-09' });
     expect((await repo.loadState()).settingsUpdatedAt).toBe(stamp);
   });
+  test('replaceAll keeps the newer copy of each row, never resurrects with an older one, and settings follow their stamp', async () => {
+    const a = await repo.create<Account>('accounts', { ...draft, id: 'acc_a' });
+    const b = await repo.create<Account>('accounts', { ...draft, id: 'acc_b', name: 'Local newer' });
+    await repo.remove('accounts', 'acc_b');   // a local tombstone with a fresh stamp
+    const stamp = await repo.updateSettings({ cutoverMonth: '2026-09' });
+    const incoming = await repo.loadSnapshot();
+    incoming.accounts = [
+      { ...a, name: 'Remote newer', updatedAt: a.updatedAt + 1000 },
+      { ...b, name: 'Stale remote', deleted: false, updatedAt: b.updatedAt - 1000 },
+      { ...a, id: 'acc_c', name: 'Only remote' },
+    ];
+    incoming.settings = { cutoverMonth: '2026-10' };
+    incoming.settingsUpdatedAt = stamp - 1;
+    await repo.replaceAll(incoming);
+    const s = await repo.loadSnapshot();
+    expect(s.accounts.find((x) => x.id === 'acc_a')!.name).toBe('Remote newer');
+    expect(s.accounts.find((x) => x.id === 'acc_b')!.deleted).toBe(true);
+    expect(s.accounts.some((x) => x.id === 'acc_c')).toBe(true);
+    expect(s.settings).toEqual({ cutoverMonth: '2026-09' });
+    incoming.settingsUpdatedAt = stamp + 1;
+    await repo.replaceAll(incoming);
+    expect((await repo.getSettings()).cutoverMonth).toBe('2026-10');
+  });
+
+  test('device values are separate from snapshots', async () => {
+    await repo.setDevice('syncConfig', { owner: 'o', repo: 'r', token: 't' });
+    expect(await repo.getDevice('syncConfig')).toEqual({ owner: 'o', repo: 'r', token: 't' });
+    expect(JSON.stringify(await repo.loadSnapshot())).not.toContain('"token"');
+    await repo.setDevice('syncConfig', undefined);
+    expect(await repo.getDevice('syncConfig')).toBeUndefined();
+  });
+
   test('importRows writes several tables atomically and isEmpty flips', async () => {
     expect(await repo.isEmpty()).toBe(true);
     const c: Category = { id: 'cat_x', groupId: 'g', name: 'X', goal: 0, sortOrder: 0, hidden: false, note: '', updatedAt: 1, deleted: false };
