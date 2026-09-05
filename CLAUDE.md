@@ -38,6 +38,24 @@ Where the playbook and running code disagree, the code wins and the playbook is 
 specifics behind everything generic in this file (institutions, the shared sheet's layout,
 anecdotes). Read it when doing import work; never quote it into the repo.
 
+## Where things live
+
+- `docs/superpowers/specs/2026-09-04-magpie-design.md` is the design; the plans beside it
+  record how each phase was built. Phases 1 to 6 are done: budget, accounts and ledgers,
+  review queue, payees, YNAB cutover import, statement and CSV and shared-sheet import with
+  matching and share claims, sync to a private GitHub repo, PWA and CI deploy, loans, charts.
+- `src/lib/domain/`: pure rules, one `.test.ts` beside each file. Start with `budget.ts`
+  (availability and Ready to Assign), `ledger.ts` (transfer rules, balances), `importPlan.ts`
+  (skip / match / create), `ynab.ts` (the cutover builder), `sheet.ts` and `shares.ts`.
+- `src/lib/storage/repo.ts` is the only Dexie caller; `src/lib/state/app.svelte.ts` is the
+  one store (`commitEdits` is the undoable multi-table batch every mutation goes through);
+  `src/lib/sync/` is the engine copied from Organized Chaos.
+- `src/lib/ui/`: one `.svelte` per screen plus `charts/`; `router.svelte.ts` lists routes.
+- `e2e/`: one spec per feature area, run against the production build with the seed dataset
+  (`src/lib/domain/seed.ts`) or the synthetic YNAB fixture.
+- `private/`: Ben's real files and `verify-*.ts` scripts that run the domain code against them
+  headlessly (`npx vite-node private/verify-ynab.ts <Register.csv> <Plan.csv>`).
+
 ## The brief (Ben, 2026-09-04)
 
 Ben's own words, condensed. `docs/superpowers/specs/2026-09-04-magpie-design.md` is the
@@ -160,10 +178,9 @@ This algorithm beat YNAB's matcher on real data (186/186 correct, zero false pai
 
 ## Reference code
 
-`statement_reconcile.py` is the cleaned-up parser + matcher from that session: working QFX
-parsing and the matching algorithm above. Treat it as the spec-by-example for import
-behaviour. It uses floats with a half-cent epsilon because it was an analysis script; port
-its *algorithm*, never its arithmetic. Money in the app is integer cents.
+`statement_reconcile.py` is the cleaned-up parser + matcher from that session; its algorithm
+is ported to `src/lib/domain/ofx.ts` and `matcher.ts` with integer cents. It stays as the
+spec-by-example for import behaviour; the TypeScript is what runs.
 
 ## Working agreements (this project; override the global CLAUDE.md where they conflict)
 
@@ -213,6 +230,10 @@ table only. e2e blocks service workers so route stubs work; nothing tests offlin
 - Domain layer (`src/lib/domain/`) is pure functions over plain data, every file with a
   `.test.ts` beside it. Screens call the store; the store calls domain functions and the
   repo; nothing else touches Dexie.
+- Measure on the real files before theorising about import behaviour: the `private/verify-*`
+  scripts exist for that, and every import rule so far was corrected by one of them.
+- Reviews run as bounded workflows (a few dimension reviewers, one skeptic per batch), and
+  findings are fixed by root cause, never by patching each symptom.
 
 ## Working style
 
