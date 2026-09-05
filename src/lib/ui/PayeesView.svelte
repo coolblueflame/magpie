@@ -12,7 +12,7 @@
   let picked = $state<string[]>([]);
   let mergeInto = $state('');
 
-  const usage = $derived(payeeUsage($state.snapshot(app.state.transactions)));
+  const usage = $derived(payeeUsage(app.transactionsSnap));
   const rows = $derived([...app.state.payees]
     .filter((p) => !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.aliases.some((a) => a.includes(search.toLowerCase())))
     .sort((a, b) => a.name.localeCompare(b.name)));

@@ -13,7 +13,7 @@
     .filter((t) => t.status === 'new' && accountsById.get(t.accountId)?.onBudget)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)));
   const prefill = (payeeId?: string): LineTarget => {
-    const c = payeeId ? payeeLastCategory(payeeId, $state.snapshot(app.state.transactions), accountsById) : undefined;
+    const c = payeeId ? payeeLastCategory(payeeId, app.transactionsSnap, accountsById) : undefined;
     return c ? { type: 'category', categoryId: c } : { type: 'none' };
   };
   /** Explicit picks by transaction id; anything else shows its pre-fill. */

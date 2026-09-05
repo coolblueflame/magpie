@@ -67,6 +67,10 @@ export function stampNew(): { id: string; updatedAt: number; editedAt: number; d
 
 type Stamped<T> = { data: T; updatedAt: number };
 
+export type BatchOp =
+  | { table: TableName; id: string; patch: Partial<Row> }
+  | { table: TableName; id: string; create: Omit<Row, keyof Row> };
+
 export class Repo {
   constructor(private db: MagpieDb) {}
 
@@ -119,6 +123,34 @@ export class Repo {
       await t.put(next);
       return next;
     });
+  }
+
+  /**
+   * Several creates and patches, across tables, in ONE rw transaction. Each
+   * patch is still a read-modify-write against the row as it is on disk at
+   * that moment. Returns the rows as written, in order, so the caller can
+   * update its mirror in one pass.
+   */
+  async applyBatch(ops: BatchOp[]): Promise<{ table: TableName; row: Row }[]> {
+    const names = [...new Set(ops.map((o) => o.table))];
+    const out: { table: TableName; row: Row }[] = [];
+    await this.db.transaction('rw', names.map((n) => this.table(n)), async () => {
+      for (const op of ops) {
+        const t = this.table(op.table);
+        if ('create' in op) {
+          const row = { ...stampNew(), ...op.create, id: op.id } as Row;
+          await t.put(row);
+          out.push({ table: op.table, row });
+        } else {
+          const row = await t.get(op.id);
+          if (!row) continue;
+          const next = { ...row, ...op.patch, updatedAt: nextStamp(row.updatedAt), editedAt: Date.now() } as Row;
+          await t.put(next);
+          out.push({ table: op.table, row: next });
+        }
+      }
+    });
+    return out;
   }
 
   async remove(table: TableName, id: string): Promise<void> {

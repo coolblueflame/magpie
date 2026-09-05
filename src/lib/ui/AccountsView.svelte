@@ -23,7 +23,7 @@
     await app.addAccount(name, newKind, newOnBudget);
     toast.show(`Added ${name}`, () => void undoStack.undo());
   }
-  const balances = $derived(accountBalances(app.state.accounts, $state.snapshot(app.state.transactions)));
+  const balances = $derived(accountBalances(app.accountsSnap, app.transactionsSnap));
   const list = (onBudget: boolean) => app.state.accounts
     .filter((a) => a.onBudget === onBudget && (showClosed || !a.closed))
     .sort((a, b) => a.sortOrder - b.sortOrder);

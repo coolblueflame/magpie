@@ -102,14 +102,22 @@
     } catch (e) { return { list: [], error: (e as Error).message }; }
     return { list: [], error: '' };
   });
-  const plan = $derived.by((): ImportPlan | null => {
-    if (!accountId || !candidates.list.length) return null;
-    try { return planImport(candidates.list, accountId, app.importState()); } catch { return null; }
-  });
-  const projected = $derived.by(() => {
-    if (!plan) return null;
-    const working = accountBalances(app.state.accounts, $state.snapshot(app.state.transactions)).get(accountId)?.working ?? 0;
-    return working + plan.created.reduce((s, c) => s + c.amount, 0);
+  // Planned once per account or mapping choice, never while a commit is applying: the plan
+  // must be applied against the state it was computed from, and re-planning on every
+  // write of the commit would snapshot the whole dataset dozens of times.
+  let plan = $state.raw<ImportPlan | null>(null);
+  let projected = $state<number | null>(null);
+  $effect(() => {
+    const list = candidates.list;
+    const acct = accountId;
+    if (busy) return;
+    if (!acct || !list.length) { plan = null; projected = null; return; }
+    try {
+      const p = planImport(list, acct, app.importState());
+      const working = accountBalances(app.accountsSnap, app.transactionsSnap).get(acct)?.working ?? 0;
+      plan = p;
+      projected = working + p.created.reduce((s, c) => s + c.amount, 0);
+    } catch { plan = null; projected = null; }
   });
   const resolution = (c: ImportCandidate) => plan?.skipped.includes(c) ? 'skip' : plan?.matched.some((m) => m.candidate === c) ? 'match' : 'new';
 
@@ -136,6 +144,7 @@
         if (cp.edits.length) await app.applyEdits(cp.edits, `apply ${cp.applied.length} shared claims`);
       }
       toast.show(plan.summary, () => void undoStack.undo());
+      plan = null;
       next();
     } catch (e) { error = (e as Error).message; }
     finally { busy = false; }

@@ -14,8 +14,8 @@
   const PAGE = 100;
 
   const account = $derived(app.state.accounts.find((a) => a.id === id));
-  const rows = $derived(ledgerRows(id, $state.snapshot(app.state.transactions)));
-  const balance = $derived(accountBalances(app.state.accounts, $state.snapshot(app.state.transactions)).get(id));
+  const rows = $derived(ledgerRows(id, app.transactionsSnap));
+  const balance = $derived(accountBalances(app.accountsSnap, app.transactionsSnap).get(id));
   let limit = $state(PAGE);
   /** A ledger row id being edited, or 'new' for the add form. */
   let editing = $state<string | null>(null);

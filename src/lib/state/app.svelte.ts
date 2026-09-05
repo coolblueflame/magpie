@@ -17,7 +17,7 @@ import { monthKeyOf } from '../domain/month';
 import type { Account, AccountKind, Category, CategoryGroup, Cents, ClearedState, CsvProfile, MonthKey, Payee, Row, Settings, ShareClaim, Transaction } from '../domain/types';
 import { assignmentId, DEFAULT_SETTINGS } from '../domain/types';
 import { openDb } from '../storage/db';
-import { Repo, type AppState, type Snapshot, type TableName } from '../storage/repo';
+import { Repo, type AppState, type BatchOp, type Snapshot, type TableName } from '../storage/repo';
 import { undoStack } from './undo.svelte';
 import { SyncEngine, type ClientLike, type FileCache, type SyncStatus } from '../sync/engine';
 import { GithubClient, type SyncConfig } from '../sync/githubClient';
@@ -44,6 +44,20 @@ export class AppStore {
     settings: { ...DEFAULT_SETTINGS }, settingsUpdatedAt: 0,
   });
   ready = $state(false);
+  /**
+   * Plain-object snapshots per table. Derived views read these instead of
+   * snapshotting the whole state: a snapshot of thousands of proxied rows
+   * costs real time (PB §2.13), and per-table deriveds only redo the table
+   * that changed.
+   */
+  accountsSnap = $derived($state.snapshot(this.state.accounts));
+  groupsSnap = $derived($state.snapshot(this.state.groups));
+  categoriesSnap = $derived($state.snapshot(this.state.categories));
+  assignmentsSnap = $derived($state.snapshot(this.state.assignments));
+  transactionsSnap = $derived($state.snapshot(this.state.transactions));
+  payeesSnap = $derived($state.snapshot(this.state.payees));
+  claimsSnap = $derived($state.snapshot(this.state.claims));
+  historySnap = $derived($state.snapshot(this.state.history));
   /** navigator.storage.persist() outcome, surfaced in Settings. */
   persistentStorage = $state<'granted' | 'denied' | 'unsupported' | 'unknown'>('unknown');
   /** A newer build is installed and waits for a reload (set by the service worker registration). */
@@ -282,22 +296,23 @@ export class AppStore {
       const prior = Object.fromEntries(Object.keys(e.patch).map((k) => [k, $state.snapshot((current as unknown as Record<string, unknown>)[k])])) as Partial<Row>;
       return { ...e, prior };
     });
-    const apply = async (first: boolean) => {
-      for (const s of steps) {
-        if ('create' in s) {
-          if (first) { const row = await this.repo.create<Row>(s.table, { ...s.create, id: s.id } as Omit<Row, keyof Row> & { id: string }); this.applyToMirror(s.table, row); }
-          else await this.writePatch(s.table, s.id, { deleted: false });
-        } else await this.writePatch(s.table, s.id, s.patch);
-      }
-    };
-    const revert = async () => {
-      for (const s of [...steps].reverse()) {
-        if ('create' in s) await this.writePatch(s.table, s.id, { deleted: true });
-        else await this.writePatch(s.table, s.id, s.prior!);
-      }
-    };
+    // One transaction and one mirror pass per direction: a statement import is
+    // dozens of edits, and a mirror mutation per row would make every derived
+    // view recompute dozens of times.
+    const run = (ops: BatchOp[]) => this.writeBatch(ops);
+    const apply = (first: boolean) => run(steps.map((s) => ('create' in s
+      ? (first ? { table: s.table, id: s.id, create: s.create } : { table: s.table, id: s.id, patch: { deleted: false } })
+      : { table: s.table, id: s.id, patch: s.patch })));
+    const revert = () => run([...steps].reverse().map((s) => ('create' in s
+      ? { table: s.table, id: s.id, patch: { deleted: true } }
+      : { table: s.table, id: s.id, patch: s.prior! })));
     undoStack.push(label, revert, () => apply(false));
     await apply(true);
+  }
+
+  private async writeBatch(ops: BatchOp[]): Promise<void> {
+    const written = await this.repo.applyBatch(ops);
+    for (const w of written) this.applyToMirror(w.table, w.row);
     this.touched();
   }
 
@@ -460,10 +475,7 @@ export class AppStore {
 
   /** Everything the import planners read; a snapshot so the planners see plain rows. */
   importState() {
-    return {
-      transactions: $state.snapshot(this.state.transactions), payees: $state.snapshot(this.state.payees),
-      claims: $state.snapshot(this.state.claims), accountsById: this.accountsById(),
-    };
+    return { transactions: this.transactionsSnap, payees: this.payeesSnap, claims: this.claimsSnap, accountsById: this.accountsById() };
   }
 
   /** One file's worth of creates and patches as one undo entry. */

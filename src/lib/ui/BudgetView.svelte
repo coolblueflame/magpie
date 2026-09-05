@@ -19,10 +19,11 @@
     router.current.name === 'budget' && router.current.month ? router.current.month : app.currentMonth,
   );
   // Snapshot first: computeBudget scans every row, and proxy reads at that scale are slow (PB §2.13).
-  const budget = $derived(computeBudget(
-    { ...$state.snapshot(app.state), currentMonth: app.currentMonth, cutoverMonth: app.state.settings.cutoverMonth },
-    month,
-  ));
+  const budget = $derived(computeBudget({
+    accounts: app.accountsSnap, categories: app.categoriesSnap, assignments: app.assignmentsSnap,
+    transactions: app.transactionsSnap, history: app.historySnap,
+    currentMonth: app.currentMonth, cutoverMonth: app.state.settings.cutoverMonth,
+  }, month));
 
   let showHidden = $state(false);
   let showStats = $state(true);
