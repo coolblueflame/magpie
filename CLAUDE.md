@@ -193,6 +193,12 @@ check the importer against them without the UI: `npx vite-node private/verify-yn
 `~/Library/Caches/ms-playwright`; bumping it means a browser download outside the project,
 which needs Ben's go-ahead.
 
+Deploy: `.github/workflows/deploy.yml` runs check → vitest → chromium e2e → build → GitHub
+Pages on every push to `main` (Pages must be enabled with source "GitHub Actions", and the
+repo public or on a plan that serves private Pages). Sync: Settings → Sync connects a private
+data repo via a fine-grained PAT (`docs/BEN-PAT-SETUP.md`); the token lives in the `device`
+table only. e2e blocks service workers so route stubs work; nothing tests offline behaviour.
+
 - Gates before every commit, in order: `npm run check` → `npx vitest run` →
   `npx playwright test`. Re-run from the top after the last edit; vitest does not typecheck
   what svelte-check does. Never claim "full gates" otherwise.

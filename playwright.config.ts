@@ -8,6 +8,7 @@ export default defineConfig({
     url: 'http://localhost:4173/magpie/',
     reuseExistingServer: !process.env.CI,
   },
-  use: { baseURL: 'http://localhost:4173/magpie/' },
+  // The service worker would swallow route-stubbed requests; nothing here tests offline behaviour.
+  use: { baseURL: 'http://localhost:4173/magpie/', serviceWorkers: 'block' },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
 });

@@ -46,6 +46,8 @@ export class AppStore {
   ready = $state(false);
   /** navigator.storage.persist() outcome, surfaced in Settings. */
   persistentStorage = $state<'granted' | 'denied' | 'unsupported' | 'unknown'>('unknown');
+  /** A newer build is installed and waits for a reload (set by the service worker registration). */
+  updateReady = $state(false);
   currentMonth: MonthKey = monthKeyOf(new Date());
   dbName = 'magpie';
   private repo!: Repo;

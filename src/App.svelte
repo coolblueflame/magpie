@@ -27,9 +27,15 @@
       if (label) toast.show(`${redo ? 'Redid' : 'Undid'} ${label}`, () => {});
     });
   }
+
+  // Returning to the tab pulls other devices' changes (PB §2.6: a tab that is merely open never pulls).
+  function onVisibility() {
+    if (document.visibilityState === 'visible') void app.syncNow();
+  }
 </script>
 
 <svelte:window onkeydown={onKey} />
+<svelte:document onvisibilitychange={onVisibility} />
 
 {#if !app.ready}
   <p data-testid="boot" class="boot">Opening the nest…</p>
