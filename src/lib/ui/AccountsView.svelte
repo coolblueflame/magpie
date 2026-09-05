@@ -24,8 +24,19 @@
     await app.setAccountClosed(a.id, !a.closed);
     undoToast(`${a.closed ? 'Reopened' : 'Closed'} ${a.name}`);
   }
+  let editingKind = $state<string | null>(null);
+  let kindDraft = $state<AccountKind>('chequing');
+  let onBudgetDraft = $state(true);
+  function startKind(a: Account) { editingKind = a.id; kindDraft = a.kind; onBudgetDraft = a.onBudget; }
+  async function saveKind(a: Account) {
+    editingKind = null;
+    if (kindDraft === a.kind && (onBudgetDraft || kindDraft === 'person') === a.onBudget) return;
+    await app.setAccountKind(a.id, kindDraft, onBudgetDraft);
+    undoToast(`Changed ${a.name}`);
+  }
   const items = (a: Account) => [
     { label: 'Rename', testid: `acct-menu-${a.id}-rename`, run: () => { renaming = a.id; renameDraft = a.name; } },
+    { label: 'Change kind', testid: `acct-menu-${a.id}-kind`, run: () => startKind(a) },
     { label: a.closed ? 'Reopen' : 'Close', testid: `acct-menu-${a.id}-close`, run: () => void toggleClosed(a) },
   ];
 
@@ -76,8 +87,8 @@
       <tbody>
         {#each accts as a (a.id)}
           {@const b = balances.get(a.id)}
-          <tr data-testid={`acct-${a.id}`} class:closed={a.closed} onclick={() => navigate({ name: 'account', id: a.id })}>
-            <td onclick={(e) => e.stopPropagation()}>
+          <tr data-testid={`acct-${a.id}`} class:closed={a.closed} onclick={(e) => { if (!(e.target as HTMLElement).closest('button, input, select, details, label')) navigate({ name: 'account', id: a.id }); }}>
+            <td>
               {#if renaming === a.id}
                 <input data-testid={`acct-rename-${a.id}`} bind:value={renameDraft} use:focusOnMount
                   onkeydown={(e) => { if (e.key === 'Enter') void commitRename(a); if (e.key === 'Escape') renaming = null; }} onblur={() => void commitRename(a)} />
@@ -85,7 +96,18 @@
                 <button class="name" onclick={() => navigate({ name: 'account', id: a.id })}>{a.name}</button><RowMenu testid={`acct-menu-${a.id}`} items={items(a)} />
               {/if}
             </td>
-            <td class="dim">{a.kind}</td>
+            <td class="dim">
+              {#if editingKind === a.id}
+                <span class="kindform">
+                  <select data-testid={`acct-kind-${a.id}`} bind:value={kindDraft}>{#each KINDS as k}<option value={k}>{k}</option>{/each}</select>
+                  <label class="toggle"><input type="checkbox" data-testid={`acct-onbudget-${a.id}`} bind:checked={onBudgetDraft} disabled={kindDraft === 'person'} /> On budget</label>
+                  <button data-testid={`acct-kind-save-${a.id}`} onclick={() => void saveKind(a)}>Save</button>
+                  <button onclick={() => (editingKind = null)}>Cancel</button>
+                  {#if (onBudgetDraft || kindDraft === 'person') !== a.onBudget}<span class="warn">Moves this balance {a.onBudget ? 'out of' : 'into'} Ready to Assign.</span>{/if}
+                  {#if kindDraft === 'person'}<span class="small">{PERSON_HELP}</span>{/if}
+                </span>
+              {:else}{a.kind}{/if}
+            </td>
             <td class={`money ${tone(b?.working ?? 0)}`} data-testid={`acct-working-${a.id}`}>{formatMoney(b?.working ?? 0)}</td>
             <td class={`money ${tone(b?.cleared ?? 0)}`} data-testid={`acct-cleared-${a.id}`}>{formatMoney(b?.cleared ?? 0)}</td>
           </tr>
@@ -115,4 +137,6 @@
   .name { border: none; padding: 0; text-align: left; font: inherit; }
   .name:hover { color: var(--blue); }
   .small { font-size: 0.85rem; max-width: 520px; }
+  .kindform { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .warn { color: var(--amber); font-size: 0.85rem; }
 </style>

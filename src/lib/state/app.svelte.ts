@@ -417,6 +417,12 @@ export class AppStore {
     return this.patchRow<Account>('accounts', id, { name: name.trim() }, `rename ${old}`);
   }
 
+  /** Kind is mostly a label; on-budget is not: it moves the balance into or out of Ready to Assign. Person forces on-budget. */
+  setAccountKind(id: string, kind: AccountKind, onBudget: boolean): Promise<void> {
+    const name = this.state.accounts.find((a) => a.id === id)?.name ?? 'account';
+    return this.patchRow<Account>('accounts', id, { kind, onBudget: kind === 'person' ? true : onBudget }, `change ${name}`);
+  }
+
   /** A closed account leaves pickers and the accounts list; its rows and history stay. */
   setAccountClosed(id: string, closed: boolean): Promise<void> {
     const name = this.state.accounts.find((a) => a.id === id)?.name ?? 'account';

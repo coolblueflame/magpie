@@ -74,6 +74,20 @@ test('rename and close an account; Import from a ledger preselects that account'
   await page.getByTestId('acct-rename-acc_card').fill('Visa');
   await page.getByTestId('acct-rename-acc_card').press('Enter');
   await expect(page.getByTestId('acct-acc_card')).toContainText('Visa');
+  await page.getByTestId('acct-menu-acc_chq').locator('summary').click();
+  await page.getByTestId('acct-menu-acc_chq-kind').click();
+  await page.getByTestId('acct-kind-acc_chq').selectOption('savings');
+  await page.getByTestId('acct-kind-save-acc_chq').click();
+  await expect(page.getByTestId('acct-acc_chq')).toContainText('savings');
+  await expect(page.getByTestId('acct-total-budget')).toHaveText('$5,369.00');
+  // Taking an account off budget moves its balance out of the budget totals.
+  await page.getByTestId('acct-menu-acc_card').locator('summary').click();
+  await page.getByTestId('acct-menu-acc_card-kind').click();
+  await page.getByTestId('acct-onbudget-acc_card').uncheck();
+  await page.getByTestId('acct-kind-save-acc_card').click();
+  await expect(page.getByTestId('acct-total-budget')).toHaveText('$6,170.00');
+  await page.keyboard.press('ControlOrMeta+z');
+  await expect(page.getByTestId('acct-total-budget')).toHaveText('$5,369.00');
   await page.getByTestId('acct-menu-acc_inv').locator('summary').click();
   await page.getByTestId('acct-menu-acc_inv-close').click();
   await expect(page.getByTestId('acct-acc_inv')).toHaveCount(0);
