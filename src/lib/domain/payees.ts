@@ -1,4 +1,5 @@
-import type { Account, IsoDate, Transaction } from './types';
+import { similarity } from './matcher';
+import type { Account, IsoDate, Payee, Transaction } from './types';
 
 /** The alias key for a raw descriptor or a payee name: trimmed, single-spaced, case-folded. */
 export function normalisePayeeKey(name: string): string {
@@ -31,6 +32,22 @@ export function payeeLastCategories(transactions: Transaction[], accountsById: M
     if (!b || tx.date > b.date || (tx.date === b.date && tx.updatedAt > b.updatedAt)) best.set(tx.payeeId, tx);
   }
   return new Map([...best].map(([id, tx]) => [id, tx.lines[0]!.categoryId!]));
+}
+
+/**
+ * The existing payee a new statement descriptor most likely is. Bank importers
+ * and statements name the same merchant differently, so a fresh raw payee with
+ * no history usually has a twin among the payees that do. Only payees with a
+ * history count as candidates, and the descriptor's own payee never does.
+ */
+export function suggestPayee(descriptor: string, payees: Payee[], hasHistory: (payeeId: string) => boolean, excludeId?: string, floor = 0.6): { payee: Payee; similarity: number } | null {
+  let best: { payee: Payee; similarity: number } | null = null;
+  for (const p of payees) {
+    if (p.deleted || p.id === excludeId || !hasHistory(p.id)) continue;
+    const s = similarity(descriptor, p.name);
+    if (s >= floor && (!best || s > best.similarity)) best = { payee: p, similarity: s };
+  }
+  return best;
 }
 
 /** How often and how recently each payee appears. */

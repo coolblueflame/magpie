@@ -52,6 +52,17 @@ test('statements: new rows, remembered account, all-skipped re-import, a matched
   await expect(page.getByTestId('cand-fitid:90002')).toHaveClass(/match/);
   await page.getByTestId('commit-import').click();
   await expect(page.getByTestId('nav-review-count')).toHaveText('9');
+
+  // A raw statement descriptor with no history offers its likely twin; accepting pre-fills the category.
+  await page.getByTestId('nav-review').click();
+  const grocerRow = page.locator('tr', { hasText: 'GROCER MART #12' }).first();
+  await expect(grocerRow.locator('[data-testid^="rv-same-"]')).toHaveText('Same as Grocer?');
+  await grocerRow.locator('[data-testid^="rv-same-"]').click();
+  const merged = page.locator('tr', { hasText: '$45.10' });
+  await expect(merged).toHaveClass(/prefilled/);
+  await expect(merged.locator('[data-testid^="rv-target-"]')).toHaveValue('cat:cat_groc');
+  await merged.locator('[data-testid^="rv-target-"]').press('Enter');
+  await expect(page.locator('tr', { hasText: '$45.10' })).toHaveCount(0);
 });
 
 test('an unknown CSV header is mapped once and remembered', async ({ page }) => {

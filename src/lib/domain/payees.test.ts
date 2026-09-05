@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { normalisePayeeKey, payeeLastCategories, payeeLastCategory, payeeUsage } from './payees';
+import { normalisePayeeKey, payeeLastCategories, payeeLastCategory, payeeUsage, suggestPayee } from './payees';
 import { seedData } from './seed';
 
 describe('payees', () => {
@@ -17,6 +17,15 @@ describe('payees', () => {
   test('payeeLastCategories agrees with payeeLastCategory for every payee', () => {
     const all = payeeLastCategories(s.transactions, accountsById);
     for (const p of s.payees) expect(all.get(p.id)).toBe(payeeLastCategory(p.id, s.transactions, accountsById));
+  });
+  test('suggestPayee finds the twin of a raw descriptor among payees with history', () => {
+    const cats = payeeLastCategories(s.transactions, accountsById);
+    const has = (id: string) => cats.has(id);
+    expect(suggestPayee('GROCER MART #12 TOWNSVILLE', s.payees, has)!.payee.id).toBe('pay_grocer');
+    expect(suggestPayee('SQ *ARCADE FUN CENTRE SK', s.payees, has)!.payee.id).toBe('pay_arcade');
+    expect(suggestPayee('TOTALLY UNRELATED LLC', s.payees, has)).toBeNull();
+    expect(suggestPayee('Grocer', s.payees, has, 'pay_grocer')).toBeNull();       // its own payee never suggests itself
+    expect(suggestPayee('Mystery', s.payees, has)).toBeNull();                    // Mystery has no history
   });
   test('payeeUsage counts and dates', () => {
     const u = payeeUsage(s.transactions);

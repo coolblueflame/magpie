@@ -246,7 +246,8 @@
   }
 </script>
 
-<section class="import">
+<section class="import" class:empty={isEmpty}>
+  <div class="statements">
   <h2>Import</h2>
   <p class="dim">Statement files (QFX/OFX), CSV exports, or the shared expense sheet. Several at once is fine; they queue.</p>
   <p><input type="file" multiple data-testid="file-any" onchange={(e) => void onFiles(e)} /></p>
@@ -350,7 +351,9 @@
     </div>
   {/if}
 
-  <h2 class="ynab">YNAB export (one-time cutover)</h2>
+  </div>
+  <div class="ynab">
+  <h2 class="ynab">{isEmpty ? 'Start here: import your YNAB budget' : 'YNAB export (one-time cutover)'}</h2>
   <p class="dim">In YNAB, open the budget menu and choose Export budget; unzip it and pick the two files below.</p>
   <div class="files">
     <label>Register CSV <input type="file" accept=".csv,text/csv" data-testid="file-register" onchange={(e) => void onYnabFile(e, 'register')} /></label>
@@ -415,11 +418,15 @@
       <p class="error" data-testid="import-blocked">This database already has data. Delete all data in <a href="#/settings">Settings</a> first.</p>
     {/if}
   {/if}
+  </div>
 </section>
 
 <style>
-  .import { max-width: 1100px; margin: 0 auto; padding: 16px 24px; }
-  h2.ynab { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 24px; }
+  .import { max-width: 1100px; margin: 0 auto; padding: 16px 24px; display: flex; flex-direction: column; }
+  /* An empty database wants the YNAB cutover first; afterwards statements lead. */
+  .import.empty .ynab { order: 0; }
+  .import.empty .statements { order: 1; margin-top: 40px; border-top: 1px solid var(--line); padding-top: 24px; }
+  .import:not(.empty) h2.ynab { margin-top: 40px; border-top: 1px solid var(--line); padding-top: 24px; }
   .panel { background: var(--bg1); border: 1px solid var(--line); border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; }
   .panel h3 { margin: 0 0 8px; }
   .files { display: flex; gap: 24px; flex-wrap: wrap; }

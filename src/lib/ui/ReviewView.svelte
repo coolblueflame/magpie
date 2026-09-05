@@ -3,7 +3,7 @@
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
   import { toast, undoToast } from './toast.svelte';
-  import { payeeLastCategories } from '../domain/payees';
+  import { payeeLastCategories, suggestPayee } from '../domain/payees';
   import { formatMoney } from '../domain/money';
   import type { LineTarget } from '../domain/transactions';
   import CategoryPicker from './CategoryPicker.svelte';
@@ -20,6 +20,16 @@
   };
   /** Explicit picks by transaction id; anything else shows its pre-fill. */
   let picks = $state<Record<string, LineTarget>>({});
+  /** For a row whose payee has no history: the existing payee it probably is (spec §10 payee suggestions). */
+  const sameAs = (payeeId?: string) => {
+    if (!payeeId || lastCategories.has(payeeId)) return null;
+    const p = app.state.payees.find((x) => x.id === payeeId);
+    return p ? suggestPayee(p.name, app.payeesSnap, (id) => lastCategories.has(id), payeeId) : null;
+  };
+  async function acceptSameAs(payeeId: string, into: string) {
+    await app.mergePayees([payeeId, into], into);
+    undoToast('Merged payee');
+  }
   const targetFor = (id: string, payeeId?: string) => picks[id] ?? prefill(payeeId);
   const prefilled = $derived(items.filter((t) => !picks[t.id] && prefill(t.payeeId).type !== 'none'));
   const payeeName = (pid?: string) => (pid ? app.state.payees.find((p) => p.id === pid)?.name ?? '' : '');
@@ -121,13 +131,18 @@
       <thead><tr><th>Account</th><th>Date</th><th>Payee</th><th>Memo</th><th class="money">Amount</th><th>Category</th><th></th></tr></thead>
       <tbody>
         {#each items as t (t.id)}
+          {@const same = sameAs(t.payeeId)}
           <tr data-testid={`rv-${t.id}`} class:prefilled={!picks[t.id] && prefill(t.payeeId).type !== 'none'}>
             <td>{accountName(t.accountId)}</td>
             <td class="date">{t.date}</td>
-            <td>{payeeName(t.payeeId)}</td>
+            <td>{payeeName(t.payeeId)}
+              {#if same}<button class="same" data-testid={`rv-same-${t.id}`} title={`Treat as ${same.payee.name} from now on`} onclick={() => void acceptSameAs(t.payeeId!, same.payee.id)}>Same as {same.payee.name}?</button>{/if}
+            </td>
             <td class="dim">{t.memo}</td>
             <td class={`money ${t.amount < 0 ? 'neg' : 'pos'}`}>{formatMoney(t.amount)}</td>
-            <td><CategoryPicker testid={`rv-target-${t.id}`} value={targetFor(t.id, t.payeeId)} accountId={t.accountId} onChange={(v) => (picks[t.id] = v)} /></td>
+            <td onkeydown={(e) => { if (e.key === 'Enter') void confirm(t.id, t.payeeId); }}>
+              <CategoryPicker testid={`rv-target-${t.id}`} value={targetFor(t.id, t.payeeId)} accountId={t.accountId} onChange={(v) => (picks[t.id] = v)} />
+            </td>
             <td><button data-testid={`rv-confirm-${t.id}`} class="primary" onclick={() => void confirm(t.id, t.payeeId)}>Confirm</button></td>
           </tr>
         {/each}
@@ -152,6 +167,8 @@
   td.money { text-align: right; }
   td.date { font-family: var(--font-mono); font-size: 0.9rem; }
   tr.prefilled td { background: rgba(79, 209, 197, 0.05); }
+  .same { margin-left: 8px; border: 1px dashed var(--line); color: var(--dim); font-size: 0.85rem; padding: 0 8px; }
+  .same:hover { color: var(--blue); border-color: var(--blue); }
   h3 { color: var(--blue); margin: 4px 0 8px; display: flex; gap: 10px; align-items: baseline; font-size: 1rem; }
   .claims { margin-bottom: 20px; }
   select { font: inherit; color: var(--text); background: var(--bg2); border: 1px solid var(--line); border-radius: 4px; max-width: 320px; }
