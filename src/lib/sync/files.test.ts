@@ -17,6 +17,9 @@ describe('files', () => {
     snap.payees.push({ ...stamp, id: 'p-new', name: 'Going', aliases: [], note: '', deleted: true });
     const back = fromFiles(toFiles(snap, NOW));
     expect(back.payees.map((p) => p.id).sort()).toEqual(['p-new', 'p1']);
+    // Unless the remote still carries the row: then the tombstone must reach it.
+    const kept = fromFiles(toFiles(snap, NOW, { keep: new Set(['p-old']) }));
+    expect(kept.payees.map((p) => p.id).sort()).toEqual(['p-new', 'p-old', 'p1']);
   });
   test('a newer schema anywhere throws before anything is read', () => {
     const files = toFiles(fullSnapshot(), NOW);

@@ -33,7 +33,7 @@
 
   // Returning to the tab pulls other devices' changes (PB §2.6: a tab that is merely open never pulls).
   function onVisibility() {
-    if (document.visibilityState === 'visible') { void app.syncNow(); void app.runInterestSweep(); }
+    if (document.visibilityState === 'visible') void app.syncThenSweep();
   }
 </script>
 

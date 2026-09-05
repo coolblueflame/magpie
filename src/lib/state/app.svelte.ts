@@ -83,12 +83,15 @@ export class AppStore {
 
   private startEngine(cfg: SyncConfig): void {
     this.engine?.dispose();
+    // The engine holds the repo it was started with: after delete-all the store opens a new
+    // database, and a cycle still in flight must not be able to reach it.
+    const repo = this.repo;
     const engine = new SyncEngine({
       client: this.clientFactory(cfg),
-      loadLocal: () => this.repo.loadSnapshot(),
-      saveLocal: async (snap) => { await this.repo.replaceAll(snap); await this.hydrate(); },
-      loadCache: async () => (await this.repo.getDevice<FileCache>('fileCache')) ?? null,
-      saveCache: (cache) => this.repo.setDevice('fileCache', cache),
+      loadLocal: () => repo.loadSnapshot(),
+      saveLocal: async (snap) => { await repo.replaceAll(snap); if (this.repo === repo) await this.hydrate(); },
+      loadCache: async () => (await repo.getDevice<FileCache>('fileCache')) ?? null,
+      saveCache: (cache) => repo.setDevice('fileCache', cache),
       debounceMs: this.syncDebounceMs,
     });
     engine.onStatus = (status, detail) => {
@@ -140,9 +143,15 @@ export class AppStore {
     await this.hydrate();
     void this.requestPersistence();
     const cfg = await this.repo.getDevice<SyncConfig>('syncConfig');
-    if (cfg) { this.startEngine(cfg); void this.engine!.syncNow(); }
+    if (cfg) this.startEngine(cfg);
     this.ready = true;
-    void this.runInterestSweep();
+    void this.syncThenSweep();
+  }
+
+  /** Pull first so the sweep sees rows another device posted; sweep regardless if the pull fails or there is no engine. */
+  async syncThenSweep(): Promise<void> {
+    try { await this.syncNow(); } catch { /* the engine reports its own status */ }
+    await this.runInterestSweep();
   }
 
   private async hydrate(): Promise<void> {
@@ -537,7 +546,11 @@ export class AppStore {
     let payeeId: string | undefined;
     for (const a of this.state.accounts) {
       if (a.kind !== 'loan' || !a.loan?.generateInterest || a.closed) continue;
-      const due = dueInterest($state.snapshot(a), this.transactionsSnap, today);
+      const candidates = dueInterest($state.snapshot(a), this.transactionsSnap, today);
+      if (!candidates.length) continue;
+      // The mirror holds living rows only; a month whose row was deleted is still posted.
+      const onDisk = await this.repo.existingIds('transactions', candidates.map((d) => d.id));
+      const due = candidates.filter((d) => !onDisk.has(d.id));
       if (!due.length) continue;
       if (!payeeId) {
         const p = this.ensurePayee('Interest');
@@ -637,10 +650,8 @@ export class AppStore {
 
   private async restoreAssigned(categoryId: string, month: MonthKey, prior: Cents | undefined): Promise<void> {
     if (prior !== undefined) { await this.writeAssigned(categoryId, month, prior); return; }
-    const id = assignmentId(categoryId, month);
-    await this.repo.remove('assignments', id);
-    const i = this.state.assignments.findIndex((a) => a.id === id);
-    if (i !== -1) this.state.assignments.splice(i, 1);
+    // writePatch tombstones, drops the row from the mirror and requests a sync in one go.
+    await this.writePatch('assignments', assignmentId(categoryId, month), { deleted: true });
   }
 }
 

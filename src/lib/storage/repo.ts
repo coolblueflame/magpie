@@ -138,6 +138,10 @@ export class Repo {
       for (const op of ops) {
         const t = this.table(op.table);
         if ('create' in op) {
+          // A create is a claim that the id is new. If a row already exists on disk, live or
+          // tombstoned, putting over it would resurrect a deletion with a stamp that wins
+          // everywhere; the caller's view was stale, so the create is skipped.
+          if (await t.get(op.id)) continue;
           const row = { ...stampNew(), ...op.create, id: op.id } as Row;
           await t.put(row);
           out.push({ table: op.table, row });
@@ -226,6 +230,12 @@ export class Repo {
         || (snap.settingsUpdatedAt === prior.updatedAt && canonical(snap.settings) < canonical(prior.data));
       if (newer) await this.db.kv.put({ key: 'settings', value: { data: { ...snap.settings }, updatedAt: snap.settingsUpdatedAt } });
     });
+  }
+
+  /** Which of the given ids exist on disk, tombstones included. */
+  async existingIds(table: TableName, ids: string[]): Promise<Set<string>> {
+    const rows = await this.table(table).bulkGet(ids);
+    return new Set(rows.filter((r): r is Row => !!r).map((r) => r.id));
   }
 
   /** Device-local values (the sync token, the file cache): never in a snapshot, never in a backup. */

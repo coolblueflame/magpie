@@ -103,6 +103,36 @@ describe('SyncEngine', () => {
     await offline.engine.syncNow();
     expect(offline.engine.status).toBe('offline');
   });
+  test('a cycle disposed mid-fetch touches neither storage nor the remote afterwards', async () => {
+    const client = new FakeClient();
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    client.listFiles = async () => { await gate; return []; };
+    const h = harness(fullSnapshot(), client);
+    const running = h.engine.syncNow();
+    h.engine.dispose();
+    release();
+    await running;
+    expect(h.saved).toEqual([]);
+    expect(client.puts).toEqual([]);
+    expect(h.cacheOf()).toBeNull();
+  });
+  test('a tombstone the remote still holds is pushed however old, so both sides converge', async () => {
+    const client = new FakeClient();
+    const now = new Date('2026-09-05T12:00:00Z').getTime();
+    // Device B pushed a live payee long ago; device A holds a 100-day-old tombstone for it.
+    const b = harness({ ...fullSnapshot(), payees: [{ id: 'p-old', name: 'Gone', aliases: [], note: '', updatedAt: now - 200 * 86_400_000, deleted: false }] }, client);
+    await b.engine.syncNow();
+    const a = harness({ ...fullSnapshot(), payees: [{ id: 'p-old', name: 'Gone', aliases: [], note: '', updatedAt: now - 100 * 86_400_000, deleted: true }] }, client);
+    await a.engine.syncNow();
+    const active = client.files.get('active.json')!.json as { payees: { id: string; deleted: boolean }[] };
+    expect(active.payees.find((p) => p.id === 'p-old')).toMatchObject({ deleted: true });
+    const putsBefore = client.puts.length;
+    await b.engine.syncNow();   // B receives the tombstone and has nothing to push back
+    expect(b.state.local.payees.find((p) => p.id === 'p-old')!.deleted).toBe(true);
+    expect(client.puts.length).toBe(putsBefore);
+  });
+
   test('a disposed engine neither syncs nor reports', async () => {
     const h = harness(fullSnapshot());
     h.engine.dispose();

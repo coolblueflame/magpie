@@ -264,6 +264,12 @@ describe('AppStore', () => {
     expect(await s.runInterestSweep('2026-08-20')).toBe(0);
     expect(s.state.payees.some((p) => p.name === 'Interest')).toBe(true);
 
+    // A deleted interest row stays deleted: the sweep must not re-mint it.
+    const gone = rows()[0]!;
+    await s.deleteTransaction(gone.id);
+    expect(await s.runInterestSweep('2026-08-20')).toBe(0);
+    expect(s.state.transactions.some((t) => t.id === gone.id)).toBe(false);
+
     const before = s.state.transactions.length;
     const adj = await s.setBalance('acc_inv', 60000, 'The Ether', 'cat_save');
     expect(adj).toMatchObject({ accountId: 'acc_inv', amount: 10000, status: 'ok' });
@@ -303,6 +309,13 @@ describe('AppStore', () => {
     await a.setAssigned('cat_fun', a.currentMonth, 12300);
     await settle();
     expect(client.puts.slice(before)).toEqual(['assignments.json']);
+    // Undoing a brand-new assignment tombstones it and that travels too.
+    await a.setAssigned('cat_util', '2027-01', 5);
+    await settle();
+    const mid = client.puts.length;
+    await undoStack.undo();
+    await settle();
+    expect(client.puts.slice(mid)).toEqual(['assignments.json']);
 
     const b = await fresh();
     b.clientFactory = () => client;

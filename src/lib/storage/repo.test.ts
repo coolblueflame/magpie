@@ -94,6 +94,19 @@ describe('Repo', () => {
     expect((await repo.getSettings()).cutoverMonth).toBe('2026-10');
   });
 
+  test('applyBatch never creates over an existing row, tombstoned or live', async () => {
+    const a = await repo.create<Account>('accounts', { ...draft, id: 'acc_x' });
+    await repo.remove('accounts', 'acc_x');
+    const written = await repo.applyBatch([
+      { table: 'accounts', id: 'acc_x', create: { ...draft, name: 'Ghost' } },
+      { table: 'accounts', id: 'acc_y', create: { ...draft, name: 'Real' } },
+    ]);
+    expect(written.map((w) => w.row.id)).toEqual(['acc_y']);
+    expect((await db.accounts.get('acc_x'))!).toMatchObject({ deleted: true, name: 'Chequing' });
+    expect(await repo.existingIds('accounts', ['acc_x', 'acc_y', 'acc_z'])).toEqual(new Set(['acc_x', 'acc_y']));
+    void a;
+  });
+
   test('device values are separate from snapshots', async () => {
     await repo.setDevice('syncConfig', { owner: 'o', repo: 'r', token: 't' });
     expect(await repo.getDevice('syncConfig')).toEqual({ owner: 'o', repo: 'r', token: 't' });

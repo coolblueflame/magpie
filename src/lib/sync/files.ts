@@ -41,8 +41,9 @@ const gate = (payload: unknown) => {
   if (schema !== undefined && schema > SCHEMA_VERSION) throw new SchemaTooNewError(schema);
 };
 
-export function toFiles(snap: Snapshot, now: Date): SyncFilePayloads {
-  const keep = <T extends Row>(row: T) => !row.deleted || now.getTime() - row.updatedAt < TOMBSTONE_TTL_MS;
+/** `keep`: ids whose tombstones must travel regardless of age (the ones the remote still holds). */
+export function toFiles(snap: Snapshot, now: Date, opts: { keep?: Set<string> } = {}): SyncFilePayloads {
+  const keep = <T extends Row>(row: T) => !row.deleted || now.getTime() - row.updatedAt < TOMBSTONE_TTL_MS || (opts.keep?.has(row.id) ?? false);
   const active: ActiveFile = {
     schema: SCHEMA_VERSION,
     accounts: snap.accounts.filter(keep), groups: snap.groups.filter(keep), categories: snap.categories.filter(keep),

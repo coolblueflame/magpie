@@ -5,7 +5,7 @@
  * just parks the engine in 'offline'/'error' until the next trigger.
  */
 import { AuthError, ConflictError, type RemoteFileEntry, type RemoteFile } from './githubClient';
-import { fromFiles, SCHEMA_VERSION, toFiles, type SyncFilePayloads } from './files';
+import { fromFiles, ROW_TABLES, SCHEMA_VERSION, toFiles, type SyncFilePayloads } from './files';
 import type { Snapshot as RemoteSnapshot } from '../storage/repo';
 import { mergeSnapshots } from './merge';
 
@@ -145,7 +145,11 @@ export class SyncEngine {
 
   /** Returns true if a sha conflict happened (caller retries with fresh remote). */
   private async cycleOnce(): Promise<boolean> {
+    // Every await below is a point where the user may have disconnected or deleted
+    // everything; a disposed cycle must not touch storage or the remote again.
+    const gone = () => this.disposed;
     const entries = await this.deps.client.listFiles();
+    if (gone()) return false;
     const cache: FileCache = (await this.deps.loadCache?.()) ?? {};
     const nextCache: FileCache = {};
     const remoteFiles = new Map<string, RemoteFile>();
@@ -161,6 +165,7 @@ export class SyncEngine {
         continue;
       }
       const file = await this.deps.client.getFile(entry.path);
+      if (gone()) return false;
       if (file) {
         remoteFiles.set(entry.path, file);
         nextCache[entry.path] = { sha: file.sha, json: file.json };
@@ -174,12 +179,18 @@ export class SyncEngine {
 
     const remoteSnap = fromFiles(payloads);
     const local = await this.deps.loadLocal();
+    if (gone()) return false;
     const { merged, localChanged, remoteChanged } = mergeSnapshots(local, remoteSnap);
 
     if (localChanged) await this.deps.saveLocal(merged);
+    if (gone()) return false;
     if (!remoteChanged) return false;
 
-    const desired = toFiles(merged, (this.deps.now ?? (() => new Date()))());
+    // A tombstone the remote still carries must travel however old it is, or the device
+    // that compacted it and the device that never saw it would trade the row forever.
+    const remoteIds = new Set<string>();
+    for (const t of ROW_TABLES) for (const r of remoteSnap[t] as { id: string }[]) remoteIds.add(r.id);
+    const desired = toFiles(merged, (this.deps.now ?? (() => new Date()))(), { keep: remoteIds });
     /*
       A year file whose last transaction left it (re-dated, or compacted away
       as a tombstone) drops out of `desired`, but the remote still holds its
@@ -197,6 +208,7 @@ export class SyncEngine {
       for (const [path, payload] of Object.entries(desired)) {
         const existing = remoteFiles.get(path);
         if (existing && JSON.stringify(existing.json) === JSON.stringify(payload)) continue;
+        if (gone()) return false;
         const sha = await this.deps.client.putFile(path, payload, existing?.sha);
         // Record what we just wrote, so the next cycle recognises our own push
         // instead of downloading it straight back.
