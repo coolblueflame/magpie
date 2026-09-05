@@ -66,6 +66,9 @@ export class PayeeResolver {
   }
 }
 
+/** Ids minted from a bank's own data (statement, CSV, sheet row); a YNAB row hash is not one. */
+export const isBankSideId = (id: string | undefined): boolean => !!id && !id.startsWith('ynab:');
+
 export function planImport(candidates: ImportCandidate[], accountId: string, state: ImportState, ids: () => string = nanoid): ImportPlan {
   const account = state.accountsById.get(accountId);
   if (!account) throw new Error(`unknown account ${accountId}`);
@@ -81,13 +84,15 @@ export function planImport(candidates: ImportCandidate[], accountId: string, sta
   const skipped = candidates.filter((c) => known.has(c.externalId));
   const pending = candidates.filter((c) => !known.has(c.externalId));
 
-  // Rows of this ledger that have no id on this side yet are what a file row may be.
+  // Rows of this ledger with no bank-side id yet are what a file row may be. A
+  // YNAB row hash (ynab:) is traceability, not a bank id: a statement row can
+  // still be that row's twin, and linking it replaces the hash with the bank id.
   const txById = new Map(state.transactions.map((t) => [t.id, t]));
   const rows = ledgerRows(accountId, state.transactions).filter((r) => {
     const tx = txById.get(r.txId)!;
-    if (!r.far) return !tx.externalId;
+    if (!r.far) return !isBankSideId(tx.externalId);
     const idx = Number(r.id.split(':')[1]);
-    return !tx.lines[idx]?.farExternalId;
+    return !isBankSideId(tx.lines[idx]?.farExternalId);
   });
   const { pairs } = matchTransactions(
     pending.map((c) => ({ id: c.externalId, date: c.date, amount: c.amount, name: c.descriptor })),

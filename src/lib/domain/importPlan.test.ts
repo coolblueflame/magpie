@@ -51,6 +51,17 @@ describe('planImport', () => {
     expect((inv.edits.find((e) => e.table === 'transactions') as unknown as { create: { status: string } }).create.status).toBe('ok');
   });
 
+  test('a row imported from YNAB is still matchable; a row already linked to a bank id is not', () => {
+    const s = stateFrom();
+    const fromYnab: Transaction = { ...s.transactions[0]!, id: 'y', accountId: 'acc_card', date: '2026-09-03', amount: -777, externalId: 'ynab:abcd1234', payeeId: 'pay_arcade', lines: [{ categoryId: 'cat_fun', amount: -777, memo: '' }] };
+    const linked: Transaction = { ...fromYnab, id: 'l', amount: -778, externalId: 'fitid:old' };
+    s.transactions = [...s.transactions, fromYnab, linked];
+    const plan = planImport([cand('fitid:new1', '2026-09-05', -777, 'ARCADE'), cand('fitid:new2', '2026-09-05', -778, 'ARCADE')], 'acc_card', s);
+    expect(plan.matched.map((m) => m.txId)).toEqual(['y']);
+    expect(plan.edits.find((e) => 'patch' in e && e.id === 'y')).toMatchObject({ patch: { externalId: 'fitid:new1' } });
+    expect(plan.created.map((c) => c.externalId)).toEqual(['fitid:new2']);
+  });
+
   test('a matched candidate never creates; unknown account throws', () => {
     const s = stateFrom();
     const plan = planImport([cand('p', '2026-08-14', 38000, 'PAYMENT')], 'acc_card', s);
