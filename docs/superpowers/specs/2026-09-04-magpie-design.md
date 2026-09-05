@@ -237,6 +237,34 @@ Bulk actions (confirm all, import including any claims it applies) undo as one e
 Undo targets the entry it announces, never merely the newest. Armed confirm for anything touching
 more than a handful of rows (PB §4 UX patterns).
 
+### 4.8 Loans and tracking balances
+
+A `loan` account is off-budget and carries `loan: { annualRatePct, standardPayment,
+generateInterest, interestDay }`. Payments are transfers from a budget account into the loan
+with a budget category (§4.3), so the budget sees the payment and the loan sees the principal
+and interest.
+
+- **Statements available** (the mortgage): interest arrives in the file; `generateInterest`
+  is off and the rate only drives projections.
+- **No statements** (a family loan): `generateInterest` is on and the app posts one interest
+  row per elapsed month, `−roundHalfAway(owed × rate / 1200)` on the balance owed at the start
+  of that day, dated `interestDay` of the month, id `int_<accountId>_<YYYY-MM>` so two devices
+  mint the same row. The sweep runs at boot and when the tab becomes visible, from the loan's
+  first month to the current one, and only for months with no row yet; changing the rate
+  affects months not yet posted.
+- **Projection**: from the balance owed now, month by month: interest, then the standard
+  payment (capped at what is owed). Reports the payoff month, months to go, total interest to
+  come, and flags a payment that cannot outrun the interest. The **what-if** applies a lump sum
+  first and reports months and interest saved against the standard projection.
+- **Rate changes** (a mortgage renewal) are edits to `annualRatePct`; posted interest rows
+  are history and stay.
+
+A tracking account (`investment`, `other`) that has no statements takes a **balance
+adjustment**: the user enters the balance it should show and the app writes one transaction
+for the difference, with a payee and an optional reporting-only category remembered in
+settings (Ben's YNAB habit: payee "The Ether", category "Investment Income"), so investment
+gains over time are a category report while the budget never sees them.
+
 ## 5. Import
 
 Every importer follows the same pipeline: parse the file into candidate rows → resolve each
@@ -389,16 +417,8 @@ Each phase ends with gates green, a commit pushed, and the memory file updated.
 
 ## 10. Later, with what is already known
 
-- **Loans**: `loan` accounts with an effective-dated interest rate and a standard payment.
-  A loan whose statements are imported (the mortgage) takes interest from the file; a loan
-  with no file (a family loan) gets a generated monthly interest transaction with a
-  deterministic id. Wanted: a repayment chart, estimated payoff date at the standard
-  payment, and a what-if for a yearly lump sum showing time saved.
-- **Assets**: `investment` and other tracking accounts hold only a CAD total, never
-  holdings. A "set balance" action writes the drift as a transaction with a designated
-  payee and a reporting-only category (Ben's YNAB habit: payee "The Ether", category
-  "Investment Income"), so investment gains over time are a category report while the
-  budget never sees them. Imported statements may replace the manual step later.
+- **Loan chart**: balance owed over time, history from the ledger plus the projection,
+  with the what-if overlaid (the numbers ship in §4.8; the picture comes with the charts).
 - **Charts**: spending by category over time, assigned vs spent, net worth; the stats
   columns in §6 are the seed.
 - **Payee suggestions for new descriptors**: a statement descriptor that matches no payee

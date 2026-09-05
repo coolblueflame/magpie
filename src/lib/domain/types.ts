@@ -29,6 +29,19 @@ export interface Account extends Row {
   note: string;
   /** Hash of the bank's own account identifier from a statement file, so the next file preselects this account. Never the number itself. */
   externalRef?: string;
+  /** Terms for a `loan` account (spec §4.8). */
+  loan?: LoanTerms;
+}
+
+export interface LoanTerms {
+  /** Nominal annual rate in percent, e.g. 4.79. */
+  annualRatePct: number;
+  /** What is normally paid each month, in cents. */
+  standardPayment: Cents;
+  /** Post a monthly interest row (a loan with no statements to import). */
+  generateInterest: boolean;
+  /** Day of month the interest row is dated, 1..28. */
+  interestDay: number;
 }
 
 export interface CategoryGroup extends Row {
@@ -161,6 +174,8 @@ export interface Settings {
   currency: string;
   /** Shared-sheet import answers: which "Paid" column is the user's, and the partner's person account. */
   sheet?: { mineFirst: boolean; personAccountId: string };
+  /** Last balance-adjustment choices (spec §4.8): the payee name and an optional reporting-only category. */
+  adjustment?: { payeeName: string; categoryId?: string };
 }
 
 export const DEFAULT_SETTINGS: Settings = { currency: 'CAD' };
