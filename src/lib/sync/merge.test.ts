@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { canonical, mergeSnapshots, pick, supersedes } from './merge';
 import { fromFiles } from './files';
-import { fullSnapshot } from './files.test';
+import { fullSnapshot } from './fixtures';
 import type { Row } from '../domain/types';
 
 const row = (over: Partial<Row & { name?: string }> = {}): Row & { name?: string } => ({ id: 'x', updatedAt: 100, deleted: false, ...over });

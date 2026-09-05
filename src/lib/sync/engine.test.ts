@@ -2,7 +2,7 @@ import { describe, expect, test, vi } from 'vitest';
 import { SyncEngine, type ClientLike, type FileCache } from './engine';
 import { AuthError, ConflictError, GithubClient, type RemoteFile, type RemoteFileEntry } from './githubClient';
 import { fromFiles, SCHEMA_VERSION } from './files';
-import { fullSnapshot } from './files.test';
+import { fullSnapshot } from './fixtures';
 import type { Snapshot } from '../storage/repo';
 
 /** In-memory Contents API: listing, get, put with optimistic shas, optional one-shot conflicts. */
