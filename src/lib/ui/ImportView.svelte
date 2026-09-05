@@ -3,21 +3,21 @@
   import { nanoid } from 'nanoid';
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
+  import { toast, undoToast } from './toast.svelte';
   import { navigate } from './router.svelte';
   import { csvObjects, parseCsv } from '../domain/csv';
   import { candidatesFromCsv, DATE_FORMATS, detectDateFormat, headerSignature } from '../domain/csvImport';
-  import { planImport, type ImportCandidate, type ImportPlan } from '../domain/importPlan';
+  import { foldEdits, planImport, type ImportCandidate, type ImportPlan } from '../domain/importPlan';
   import { decodeOfx, isOfx, parseOfx, type OfxStatement } from '../domain/ofx';
   import { isSheetHeader, parseSheet, planClaims, planSheet, type SheetPlan } from '../domain/sheet';
   import { accountBalances } from '../domain/ledger';
   import { formatMoney } from '../domain/money';
   import { monthLabel } from '../domain/month';
   import {
-    buildYnabImport, inferAccounts, isYnabPlan, isYnabRegister, readYnabPlan, readYnabRegister,
+    buildYnabImport, defaultCutoverMonth, inferAccounts, isYnabPlan, isYnabRegister, readYnabPlan, readYnabRegister,
     type InferredAccount, type YnabAccountChoice, type YnabImport, type YnabPlanRow, type YnabRegisterRow,
   } from '../domain/ynab';
-  import type { AccountKind, CsvProfile } from '../domain/types';
+  import type { AccountKind, CsvProfile, Transaction } from '../domain/types';
 
   const KINDS: AccountKind[] = ['chequing', 'savings', 'credit', 'cash', 'person', 'loan', 'investment', 'other'];
 
@@ -133,17 +133,27 @@
         await app.saveProfile({ ...rest, accountId, ...(id !== 'draft' ? { id } : {}) });
       }
       const n = plan.created.length + plan.matched.length;
-      await app.applyEdits(plan.edits, `import ${n} rows`);
-      if (c.kind === 'ofx' && c.statement.accountRef) await app.rememberAccountRef(accountId, c.statement.accountRef);
-      // New bank rows may be what open claims were waiting for.
+      // New bank rows may be what open claims were waiting for; the claim splits go into the
+      // same undo entry, planned against the rows this import is about to create.
+      let edits = plan.edits;
+      let applied = 0;
       const person = app.state.settings.sheet?.personAccountId;
       const open = app.state.claims.filter((k) => k.status === 'open');
       if (person && open.length) {
         const s = app.importState();
-        const cp = planClaims(open, s.transactions, s.accountsById, person, (id) => s.payees.find((p) => p.id === id)?.name ?? '');
-        if (cp.edits.length) await app.applyEdits(cp.edits, `apply ${cp.applied.length} shared claims`);
+        const now = Date.now();
+        const createdRows = plan.edits
+          .filter((e): e is typeof e & { create: Record<string, unknown> } => 'create' in e && e.table === 'transactions')
+          .map((e) => ({ ...(e.create as Omit<Transaction, 'id' | 'updatedAt' | 'deleted'>), id: e.id, updatedAt: now, deleted: false }) as Transaction);
+        const names = new Map(s.payees.map((p) => [p.id, p.name]));
+        for (const p of plan.payeesToCreate) names.set(p.id, p.name);
+        const cp = planClaims(open, [...s.transactions, ...createdRows], s.accountsById, person, (id) => (id ? names.get(id) ?? '' : ''), app.state.settings.cutoverMonth);
+        edits = foldEdits([...plan.edits, ...cp.edits]);
+        applied = cp.applied.length;
       }
-      toast.show(plan.summary, () => void undoStack.undo());
+      await app.applyEdits(edits, `import ${n} rows`);
+      if (c.kind === 'ofx' && c.statement.accountRef) await app.rememberAccountRef(accountId, c.statement.accountRef);
+      undoToast(applied ? `${plan.summary}; ${applied} shared claims applied` : plan.summary);
       plan = null;
       next();
     } catch (e) { error = (e as Error).message; }
@@ -160,9 +170,11 @@
     try {
       const rows = parseSheet(c.rows, sheetSettings.mineFirst);
       const s = app.importState();
-      const p = planSheet(rows, sheetSettings.personAccountId, s, Date.now(), nanoid);
-      const cp = planClaims([...s.claims.filter((k) => k.status === 'open'), ...p.claims], s.transactions, s.accountsById, sheetSettings.personAccountId, (id) => s.payees.find((x) => x.id === id)?.name ?? '');
-      return { ...p, claimsNow: cp.applied.length };
+      const cutover = app.state.settings.cutoverMonth;
+      const p = planSheet(rows, sheetSettings.personAccountId, s, Date.now(), nanoid, cutover);
+      const cp = planClaims([...s.claims.filter((k) => k.status === 'open'), ...p.claims], s.transactions, s.accountsById, sheetSettings.personAccountId, (id) => s.payees.find((x) => x.id === id)?.name ?? '', cutover);
+      // Claims created and applied in the same import fold into one create, one undo entry.
+      return { ...p, edits: foldEdits([...p.edits, ...cp.edits]), claimsNow: cp.applied.length };
     } catch { return null; }
   });
   async function saveSheetSettings() {
@@ -177,10 +189,7 @@
     try {
       const rows = sheetPlan.claims.length + sheetPlan.partnerPaid.length;
       if (sheetPlan.edits.length) await app.applyEdits(sheetPlan.edits, `import ${rows} sheet rows`);
-      const s = app.importState();
-      const cp = planClaims(s.claims.filter((k) => k.status === 'open'), s.transactions, s.accountsById, sheetSettings.personAccountId, (id) => s.payees.find((x) => x.id === id)?.name ?? '');
-      if (cp.edits.length) await app.applyEdits(cp.edits, `apply ${cp.applied.length} shared claims`);
-      toast.show(`Sheet: ${sheetPlan.claims.length} claims, ${sheetPlan.partnerPaid.length} partner-paid rows, ${cp.applied.length} applied now`, () => void undoStack.undo());
+      undoToast(`Sheet: ${sheetPlan.claims.length} claims, ${sheetPlan.partnerPaid.length} partner-paid rows, ${sheetPlan.claimsNow} applied now`);
       next();
     } catch (e) { error = (e as Error).message; }
     finally { busy = false; }
@@ -192,6 +201,8 @@
   let build = $state.raw<YnabImport | null>(null);
   let choices = $state<(InferredAccount & { person: boolean })[]>([]);
   let ynabError = $state('');
+  let cutoverChoice = $state('');
+  const planMonths = $derived(planRows ? [...new Set(planRows.map((r) => r.month))].sort().reverse() : []);
   const isEmpty = $derived(!app.state.accounts.length && !app.state.categories.length && !app.state.transactions.length);
 
   async function onYnabFile(e: Event, which: 'register' | 'plan') {
@@ -210,6 +221,7 @@
         if (!isYnabPlan(header)) throw new Error('That is not a YNAB Plan export.');
         planRows = readYnabPlan(text);
       }
+      if (register && planRows) cutoverChoice = defaultCutoverMonth(register, planRows);
     } catch (err) { ynabError = (err as Error).message; }
   }
   function setPerson(i: number) {
@@ -222,7 +234,7 @@
     ynabError = '';
     try {
       const accounts: Record<string, YnabAccountChoice> = Object.fromEntries(choices.map((c) => [c.name, { kind: c.kind, onBudget: c.onBudget, person: c.person }]));
-      build = buildYnabImport(register, planRows, { accounts, now: Date.now() });
+      build = buildYnabImport(register, planRows, { accounts, now: Date.now(), ...(cutoverChoice ? { cutoverMonth: cutoverChoice } : {}) });
     } catch (err) { ynabError = (err as Error).message; }
   }
   async function doYnabImport() {
@@ -361,6 +373,13 @@
         {/each}
       </tbody>
     </table>
+    <p>
+      <label>Cutover month (Magpie's rules take over here; earlier months stay as YNAB had them)
+        <select data-testid="cutover-month" bind:value={cutoverChoice} onchange={() => (build = null)}>
+          {#each planMonths.slice(0, 24) as m (m)}<option value={m}>{monthLabel(m)}</option>{/each}
+        </select>
+      </label>
+    </p>
     <p><button data-testid="analyse" onclick={analyse}>Analyse</button></p>
   {/if}
   {#if build}

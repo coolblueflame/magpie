@@ -405,7 +405,7 @@ export class AppStore {
   }
 
   /** Split one bank row by an open claim and close the claim; one undo entry. */
-  applyClaim(claimId: string, txId: string, personAccountId: string): Promise<void> {
+  async applyClaim(claimId: string, txId: string, personAccountId: string): Promise<void> {
     const claim = this.state.claims.find((c) => c.id === claimId);
     const tx = this.transaction(txId);
     if (!claim) throw new Error(`no claim ${claimId}`);
@@ -413,7 +413,7 @@ export class AppStore {
     if (tx.shared || this.state.claims.some((c) => c.transactionId === tx.id && c.status === 'applied')) throw new Error('That transaction is already shared.');
     const categoryId = tx.lines.find((l) => !l.transferAccountId)?.categoryId;
     const lines = sharedLines(tx.amount, claim.total, claim.percent, categoryId, personAccountId);
-    return this.commitEdits([
+    await this.commitEdits([
       { table: 'transactions', id: tx.id, patch: { lines, shared: { accountId: personAccountId, percent: claim.percent, total: claim.total }, status: categoryId ? 'ok' : 'new' } as Partial<Row> },
       { table: 'claims', id: claim.id, patch: { status: 'applied', transactionId: tx.id } as Partial<Row> },
     ], 'apply shared claim');

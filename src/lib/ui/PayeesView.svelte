@@ -2,7 +2,7 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
+  import { toast, undoToast } from './toast.svelte';
   import { payeeUsage } from '../domain/payees';
   import { focusOnMount } from './focusOnMount';
 
@@ -23,7 +23,7 @@
     const name = draft.trim();
     if (!name || name === old) return;
     await app.renamePayee(id, name);
-    toast.show(`Renamed ${old}`, () => void undoStack.undo());
+    undoToast(`Renamed ${old}`);
   }
   function toggle(id: string, on: boolean) {
     picked = on ? [...picked, id] : picked.filter((x) => x !== id);
@@ -34,7 +34,7 @@
     await app.mergePayees(picked, mergeInto);
     picked = [];
     mergeInto = '';
-    toast.show(`Merged ${n} payees`, () => void undoStack.undo());
+    undoToast(`Merged ${n} payees`);
   }
 </script>
 

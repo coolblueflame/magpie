@@ -8,7 +8,8 @@
 
   let { draft: initial, payeeName: initialPayee = '', note = '', shared: initialShared = null, onSave, onCancel, onDelete }: {
     draft: TxDraft; payeeName?: string; note?: string; shared?: { accountId: string; percent: number } | null;
-    onSave: (draft: TxDraft, payeeName: string, shared: { accountId: string; percent: number } | null) => void | Promise<void>;
+    /** shared: undefined = unchanged (keep the stored split as edited), an object = re-derive, null = clear. */
+    onSave: (draft: TxDraft, payeeName: string, shared: { accountId: string; percent: number } | null | undefined) => void | Promise<void>;
     onCancel: () => void; onDelete?: () => void;
   } = $props();
 
@@ -74,7 +75,10 @@
   async function save() {
     error = '';
     try {
-      await onSave({ ...$state.snapshot(d), outflow: total < 0 ? -total : 0, inflow: total > 0 ? total : 0 }, payee.trim(), sharedChoice ?? (initialShared ? null : undefined) as never);
+      // Only a changed share re-derives the lines; a memo edit on a claim-based split must not.
+      const key = (s: { accountId: string; percent: number } | null | undefined) => (s ? `${s.accountId}|${s.percent}` : '');
+      const sharedArg = key(initialShared) === key(sharedChoice) ? undefined : (sharedChoice ?? null);
+      await onSave({ ...$state.snapshot(d), outflow: total < 0 ? -total : 0, inflow: total > 0 ? total : 0 }, payee.trim(), sharedArg);
     } catch (e) { error = (e as Error).message; }
   }
   function onKey(e: KeyboardEvent) {

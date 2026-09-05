@@ -32,17 +32,17 @@ test('statements: new rows, remembered account, all-skipped re-import, a matched
   await page.getByTestId('file-any').setInputFiles(`${DIR}/card.qfx`);
   await page.getByTestId('panel').waitFor();
   await page.getByTestId('imp-account').selectOption('acc_card');
-  await expect(page.getByTestId('imp-summary')).toHaveText('4 in file: 0 already imported, 0 matched, 4 new');
+  await expect(page.getByTestId('imp-summary')).toHaveText('5 in file: 0 already imported, 0 matched, 5 new');
   await expect(page.getByTestId('imp-ledger')).toContainText("The file's balance is -$1,234.56");
   await expect(page.getByTestId('cand-fitid:2026090300001')).toHaveClass(/new/);
   await page.getByTestId('commit-import').click();
   await expect(page.getByTestId('panel')).toHaveCount(0);
-  await expect(page.getByTestId('nav-review-count')).toHaveText('6');
+  await expect(page.getByTestId('nav-review-count')).toHaveText('7');
 
   await page.getByTestId('file-any').setInputFiles(`${DIR}/card.qfx`);
   await page.getByTestId('panel').waitFor();
   await expect(page.getByTestId('imp-account')).toHaveValue('acc_card');
-  await expect(page.getByTestId('imp-summary')).toHaveText('4 in file: 4 already imported, 0 matched, 0 new');
+  await expect(page.getByTestId('imp-summary')).toHaveText('5 in file: 5 already imported, 0 matched, 0 new');
   await page.getByTestId('skip-file').click();
 
   await page.getByTestId('file-any').setInputFiles(`${DIR}/bank.qfx`);
@@ -51,7 +51,7 @@ test('statements: new rows, remembered account, all-skipped re-import, a matched
   await expect(page.getByTestId('imp-summary')).toHaveText('3 in file: 0 already imported, 1 matched, 2 new');
   await expect(page.getByTestId('cand-fitid:90002')).toHaveClass(/match/);
   await page.getByTestId('commit-import').click();
-  await expect(page.getByTestId('nav-review-count')).toHaveText('8');
+  await expect(page.getByTestId('nav-review-count')).toHaveText('9');
 });
 
 test('an unknown CSV header is mapped once and remembered', async ({ page }) => {
@@ -93,12 +93,13 @@ test('the shared sheet: one claim applies to the matching card row, one partner-
   await page.getByTestId('sheet-save-settings').click();
   await expect(page.getByTestId('sheet-summary')).toContainText('1 rows you paid become claims (1 match a bank row already)');
   await expect(page.getByTestId('sheet-summary')).toContainText('1 rows the other person paid');
+  await expect(page.getByTestId('sheet-summary')).toContainText('1 already imported');
   await page.getByTestId('commit-sheet').click();
   await expect(page.getByTestId('panel')).toHaveCount(0);
 
   await page.getByTestId('nav-accounts').click();
   await page.locator('tr', { hasText: 'Card' }).first().click();
-  const shared = page.locator('tr', { hasText: 'Grocer' }).filter({ hasText: '2026-07-05' });
+  const shared = page.locator('tr', { hasText: 'Grocer' }).filter({ hasText: '2026-09-03' });
   await expect(shared).toContainText('Split (2)');
   await expect(shared).toContainText('shared 35%');
   await page.getByTestId('nav-accounts').click();

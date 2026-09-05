@@ -2,9 +2,10 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
+  import { toast, undoToast } from './toast.svelte';
   import { accountBalances, ledgerRows, type LedgerKind, type LedgerRow } from '../domain/ledger';
   import { formatMoney } from '../domain/money';
+  import { todayKey } from '../domain/month';
   import { draftFromTransaction, emptyDraft, type TxDraft } from '../domain/transactions';
   import { RTA } from '../domain/types';
   import { navigate } from './router.svelte';
@@ -29,7 +30,6 @@
     return k.categoryId ? categoryName(k.categoryId) : '';
   }
   const tone = (c: number) => (c < 0 ? 'neg' : c > 0 ? 'pos' : '');
-  const today = () => new Date().toISOString().slice(0, 10);
 
   function draftFor(row: LedgerRow): { draft: TxDraft; payee: string; note: string; shared: { accountId: string; percent: number } | null } {
     const tx = app.state.transactions.find((t) => t.id === row.txId)!;
@@ -39,16 +39,16 @@
     };
   }
   const sharedOf = (txId: string) => app.state.transactions.find((t) => t.id === txId)?.shared;
-  async function save(row: LedgerRow | null, draft: TxDraft, payee: string, shared: { accountId: string; percent: number } | null) {
+  async function save(row: LedgerRow | null, draft: TxDraft, payee: string, shared: { accountId: string; percent: number } | null | undefined) {
     if (row) await app.updateTransaction(row.txId, draft, payee, shared);
     else await app.addTransaction(draft, payee, shared);
     editing = null;
-    toast.show(row ? 'Saved transaction' : 'Added transaction', () => void undoStack.undo());
+    undoToast(row ? 'Saved transaction' : 'Added transaction');
   }
   async function remove(row: LedgerRow) {
     editing = null;
     await app.deleteTransaction(row.txId);
-    toast.show('Deleted transaction', () => void undoStack.undo());
+    undoToast('Deleted transaction');
   }
   async function toggleCleared(row: LedgerRow) {
     await app.setCleared(row.txId, id, row.cleared === 'cleared' ? 'uncleared' : 'cleared');
@@ -69,7 +69,7 @@
       <button data-testid="add-tx" class="primary" onclick={() => (editing = 'new')}>Add transaction</button>
     </header>
     {#if editing === 'new'}
-      <TransactionEditor draft={emptyDraft(id, today())} onSave={(d, p, s) => save(null, d, p, s)} onCancel={() => (editing = null)} />
+      <TransactionEditor draft={emptyDraft(id, todayKey())} onSave={(d, p, s) => save(null, d, p, s)} onCancel={() => (editing = null)} />
     {/if}
     <table>
       <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Memo</th><th class="money">Outflow</th><th class="money">Inflow</th><th class="money">Balance</th><th>C</th></tr></thead>

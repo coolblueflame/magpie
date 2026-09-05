@@ -21,10 +21,24 @@
   const groups = $derived([...app.state.groups].filter((g) => !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
   const cats = (gid: string) => app.state.categories.filter((c) => c.groupId === gid && !c.hidden).sort((a, b) => a.sortOrder - b.sortOrder);
   const accounts = $derived(app.state.accounts.filter((a) => !a.closed && a.id !== accountId).sort((a, b) => a.sortOrder - b.sortOrder));
+  /** The current value kept as an option when it is not in the visible lists, so the select never shows blank for a real value. */
+  const fallback = $derived.by((): { value: string; label: string } | null => {
+    if (value.type === 'category' && value.categoryId !== RTA) {
+      const c = app.state.categories.find((x) => x.id === value.categoryId);
+      const g = c && app.state.groups.find((x) => x.id === c.groupId);
+      if (!c || c.hidden || !g || g.hidden) return { value: encode(value), label: `${c?.name ?? 'Unknown category'} (hidden)` };
+    }
+    if (value.type === 'transfer' && mode === 'full') {
+      const a = app.state.accounts.find((x) => x.id === value.accountId);
+      if (!a || a.closed || a.id === accountId) return { value: encode(value), label: `Transfer to ${a?.name ?? '?'} (closed)` };
+    }
+    return null;
+  });
 </script>
 
 <select data-testid={testid} value={encode(value)} onchange={(e) => onChange(decode(e.currentTarget.value))}>
   <option value="">Choose…</option>
+  {#if fallback}<option value={fallback.value}>{fallback.label}</option>{/if}
   <option value="rta">Ready to Assign</option>
   {#each groups as g (g.id)}
     <optgroup label={g.name}>

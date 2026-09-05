@@ -2,6 +2,8 @@
  * Singleton undo-toast state. Deletions everywhere route through this:
  * show a 5s toast whose Undo callback flips the tombstone back.
  */
+import { undoStack } from '../state/undo.svelte';
+
 class ToastStore {
   current: {
     label: string;
@@ -38,3 +40,14 @@ class ToastStore {
 }
 
 export const toast = new ToastStore();
+
+/**
+ * A toast whose Undo reverts the entry that was just pushed, not whatever is
+ * newest when the button is finally pressed: cleared toggles and hide/unhide
+ * push entries without a toast of their own, and a lingering toast must not
+ * undo one of those instead.
+ */
+export function undoToast(label: string): void {
+  const entry = undoStack.latest;
+  toast.show(label, () => { if (entry) void undoStack.undoEntry(entry.id); });
+}

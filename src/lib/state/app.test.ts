@@ -224,6 +224,33 @@ describe('AppStore', () => {
     expect(s.state.transactions.find((t) => t.id === 'seed_t15')!.status).toBe('new');
   });
 
+  test('a claim-based split keeps its lines on other edits and re-derives from the stored total when the share changes', async () => {
+    const s = await fresh();
+    await s.loadSeed();
+    const person = await s.addAccount('Roomie', 'person', true);
+    await s.commitEdits([{ table: 'claims', id: 'k1', create: { date: '2026-09-03', total: 20000, paid: 12345, percent: 50, description: 'Grocer', status: 'open' } }], 'claim');
+    await s.applyClaim('k1', 'seed_t13', person.id);
+    const tx = () => s.state.transactions.find((t) => t.id === 'seed_t13')!;
+    expect(tx().shared).toEqual({ accountId: person.id, percent: 50, total: 20000 });
+    expect(tx().lines).toEqual([{ amount: -10000, memo: '', categoryId: 'cat_groc' }, { transferAccountId: person.id, amount: -2345, memo: '' }]);
+    await s.updateTransaction('seed_t13', { ...draftFromTransaction(tx()), memo: 'edited' });
+    expect(tx().memo).toBe('edited');
+    expect(tx().lines[0]!.amount).toBe(-10000);
+    await s.updateTransaction('seed_t13', draftFromTransaction(tx()), undefined, { accountId: person.id, percent: 25 });
+    expect(tx().lines).toEqual([{ amount: -15000, memo: '', categoryId: 'cat_groc' }, { transferAccountId: person.id, amount: 2655, memo: '' }]);
+    expect(tx().shared).toEqual({ accountId: person.id, percent: 25, total: 20000 });
+    await expect(s.applyClaim('k1', 'seed_t13', person.id)).rejects.toThrow(/no longer open/);
+  });
+
+  test('assignments before the cutover are refused without touching the undo stack', async () => {
+    const s = await fresh();
+    await s.importYnab(fixtureBuild());
+    const depth = undoStack.entries.length;
+    await expect(s.setAssigned(s.state.categories[0]!.id, '2026-08', 100)).rejects.toThrow(/before the cutover/);
+    expect(undoStack.entries.length).toBe(depth);
+    expect(s.state.assignments.some((a) => a.month === '2026-08' && a.amount === 100)).toBe(false);
+  });
+
   test('mergePayees repoints transactions, keeps aliases, and undoes as one', async () => {
     const s = await fresh();
     await s.loadSeed();

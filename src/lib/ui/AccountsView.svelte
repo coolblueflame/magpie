@@ -6,7 +6,7 @@
   import { navigate } from './router.svelte';
   import type { Account, AccountKind } from '../domain/types';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
+  import { toast, undoToast } from './toast.svelte';
   import { focusOnMount } from './focusOnMount';
 
   const KINDS: AccountKind[] = ['chequing', 'savings', 'credit', 'cash', 'person', 'loan', 'investment', 'other'];
@@ -21,7 +21,7 @@
     adding = false;
     newName = '';
     await app.addAccount(name, newKind, newOnBudget);
-    toast.show(`Added ${name}`, () => void undoStack.undo());
+    undoToast(`Added ${name}`);
   }
   const balances = $derived(accountBalances(app.accountsSnap, app.transactionsSnap));
   const list = (onBudget: boolean) => app.state.accounts

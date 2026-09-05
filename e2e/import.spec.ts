@@ -38,6 +38,7 @@ test('imports the fixture export and shows the verified budget', async ({ page }
   await page.getByTestId('kind-3').selectOption('investment');
   await expect(page.getByTestId('onbudget-3')).not.toBeChecked();
   await expect(page.getByTestId('onbudget-2')).toBeChecked();
+  await expect(page.getByTestId('cutover-month')).toHaveValue('2026-09');
   await page.getByTestId('analyse').click();
   await expect(page.getByTestId('report-mismatches')).toHaveText('0 cutover mismatches, 0 activity mismatches');
   await expect(page.getByTestId('report-cc')).toContainText('$17.34 higher');
@@ -55,9 +56,12 @@ test('imports the fixture export and shows the verified budget', async ({ page }
   await page.getByTestId('show-hidden').check();
   await expect(page.locator('tr', { hasText: 'Old Hobby' })).toHaveClass(/hidden/);
 
-  // August shows YNAB's own numbers, including the overspend YNAB later reset.
+  // August shows YNAB's own numbers, including the overspend YNAB later reset, and takes no edits.
   await page.getByTestId('month-prev').click();
   await expect(availableOf(page, 'Fun')).toHaveText('-$15.00');
+  await expect(page.getByTestId('history-note')).toContainText('read-only');
+  await expect(page.getByTestId('fill-all')).toHaveCount(0);
+  await expect(page.locator('tr', { hasText: 'Fun' }).locator('button[data-testid^="assigned-"]')).toHaveCount(0);
 
   // A second import is refused while data exists.
   await page.goto('./#/import');

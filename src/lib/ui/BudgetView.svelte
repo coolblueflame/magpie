@@ -2,9 +2,9 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
+  import { toast, undoToast } from './toast.svelte';
   import { computeBudget } from '../domain/budget';
-  import { fillPatches, suggestGoal } from '../domain/goals';
+  import { fillPatches, suggestGoal, visibleCategories as visibleOf } from '../domain/goals';
   import { categoryStats } from '../domain/stats';
   import { formatMoney } from '../domain/money';
   import { addMonths, monthLabel } from '../domain/month';
@@ -28,7 +28,10 @@
   let showHidden = $state(false);
   let showStats = $state(true);
   const groups = $derived([...app.state.groups].filter((g) => showHidden || !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
-  const visibleCategories = $derived(app.state.categories.filter((c) => !c.hidden));
+  const visibleCategories = $derived(visibleOf(app.state.categories, app.state.groups));
+  /** Months before the cutover show YNAB's numbers (spec §4.1) and take no edits. */
+  const cutover = $derived(app.state.settings.cutoverMonth);
+  const readOnly = $derived(!!cutover && month < cutover!);
   const categoriesOf = (groupId: string) =>
     app.state.categories.filter((c) => c.groupId === groupId && (showHidden || !c.hidden)).sort((a, b) => a.sortOrder - b.sortOrder);
   const groupTotals = (groupId: string) => categoriesOf(groupId).reduce((t, c) => {
@@ -63,11 +66,11 @@
     clearTimeout(fillTimer);
     fillArmed = false;
     const total = await app.fillAllGoals(month);
-    toast.show(`Filled all goals, ${formatMoney(total)}`, () => void undoStack.undo());
+    undoToast(`Filled all goals, ${formatMoney(total)}`);
   }
   async function fillOne(c: Category) {
     await app.fillGoal(c.id, month);
-    toast.show(`Filled ${c.name}`, () => void undoStack.undo());
+    undoToast(`Filled ${c.name}`);
   }
 
   let move = $state<{ from: string; fromName: string; amount: Cents } | null>(null);
@@ -75,7 +78,7 @@
     const m = move!;
     move = null;
     await app.moveMoney(m.from, to, month, amount);
-    toast.show(`Moved ${formatMoney(amount)}`, () => void undoStack.undo());
+    undoToast(`Moved ${formatMoney(amount)}`);
   }
 
   let renaming = $state<string | null>(null);
@@ -87,7 +90,7 @@
     const name = renameDraft.trim();
     if (!name || name === old) return;
     await (kind === 'category' ? app.renameCategory(id, name) : app.renameGroup(id, name));
-    toast.show(`Renamed ${old}`, () => void undoStack.undo());
+    undoToast(`Renamed ${old}`);
   }
 
   /** A group id to add a category into, or 'group' to add a new group. */
@@ -100,20 +103,20 @@
     addDraft = '';
     if (!target || !name) return;
     await (target === 'group' ? app.addGroup(name) : app.addCategory(target, name));
-    toast.show(`Added ${name}`, () => void undoStack.undo());
+    undoToast(`Added ${name}`);
   }
 
   async function commitAssigned(c: Category, cents: Cents) {
     await app.setAssigned(c.id, month, cents);
-    toast.show(`Assigned ${c.name}`, () => void undoStack.undo());
+    undoToast(`Assigned ${c.name}`);
   }
   async function commitGoal(c: Category, cents: Cents) {
     await app.setGoal(c.id, cents);
-    toast.show(`Goal for ${c.name}`, () => void undoStack.undo());
+    undoToast(`Goal for ${c.name}`);
   }
   async function adoptAll() {
     await app.setGoals(suggestions);
-    toast.show(`Adopted ${suggestions.length} suggested goals`, () => void undoStack.undo());
+    undoToast(`Adopted ${suggestions.length} suggested goals`);
   }
 
   const stats = (id: string) => categoryStats(budget.activityByCategory.get(id), app.currentMonth);
@@ -137,8 +140,12 @@
     <button data-testid="month-next" onclick={() => navigate({ name: 'budget', month: addMonths(month, 1) })}>›</button>
     <div class="rta">
       <span class="label">Ready to Assign</span>
-      <button class={`rtaval money ${tone(budget.rta)}`} data-testid="rta" title="Assign from Ready to Assign"
-        onclick={() => (move = { from: RTA, fromName: 'Ready to Assign', amount: 0 })}>{formatMoney(budget.rta)}</button>
+      {#if readOnly}
+        <span class={`rtaval money ${tone(budget.rta)}`} data-testid="rta">{formatMoney(budget.rta)}</span>
+      {:else}
+        <button class={`rtaval money ${tone(budget.rta)}`} data-testid="rta" title="Assign from Ready to Assign"
+          onclick={() => (move = { from: RTA, fromName: 'Ready to Assign', amount: 0 })}>{formatMoney(budget.rta)}</button>
+      {/if}
       {#if budget.uncategorised !== 0}
         <span class="chip" data-testid="uncategorised">Uncategorised {formatMoney(budget.uncategorised)}</span>
       {/if}
@@ -157,12 +164,16 @@
       <button data-testid="add-group" onclick={() => { addingIn = 'group'; addDraft = ''; }}>Add group</button>
     {/if}
     <span class="spacer"></span>
-    {#if suggestions.length}
-      <button data-testid="adopt-suggestions" onclick={() => void adoptAll()}>Use {suggestions.length} suggested goals</button>
+    {#if readOnly}
+      <span class="note" data-testid="history-note">Before {monthLabel(cutover!)}: YNAB's numbers, read-only.</span>
+    {:else}
+      {#if suggestions.length}
+        <button data-testid="adopt-suggestions" onclick={() => void adoptAll()}>Use {suggestions.length} suggested goals</button>
+      {/if}
+      <button data-testid="fill-all" class:armed={fillArmed} disabled={fill.total === 0} onclick={() => void fillAll()} onblur={() => (fillArmed = false)}>
+        {fillArmed ? `Take ${formatMoney(fill.total)} from Ready to Assign?` : `Fill all goals · ${formatMoney(fill.total)}`}
+      </button>
     {/if}
-    <button data-testid="fill-all" class:armed={fillArmed} disabled={fill.total === 0} onclick={() => void fillAll()} onblur={() => (fillArmed = false)}>
-      {fillArmed ? `Take ${formatMoney(fill.total)} from Ready to Assign?` : `Fill all goals · ${formatMoney(fill.total)}`}
-    </button>
   </div>
   <table>
     <thead>
@@ -213,23 +224,31 @@
               {/if}
             </td>
             <td class="money"><div class="wrap">
-              {#if sugg !== null}
+              {#if sugg !== null && !readOnly}
                 <button class="suggest" data-testid={`suggest-${c.id}`} title={`Use ${formatMoney(sugg)} as the goal`} onclick={() => void commitGoal(c, sugg)}>{formatMoney(sugg)}?</button>
               {/if}
               <MoneyCell value={c.goal} testid={`goal-${c.id}`} inputTestid={`goal-input-${c.id}`} onCommit={(v) => commitGoal(c, v)} />
             </div></td>
             <td class="money"><div class="wrap">
-              {#if c.goal > assigned}
-                <button class="fill" data-testid={`fill-${c.id}`} title="Fill to goal" onclick={() => void fillOne(c)}>↑</button>
+              {#if readOnly}
+                <span class="money" data-testid={`assigned-${c.id}`}>{formatMoney(assigned)}</span>
+              {:else}
+                {#if c.goal > assigned}
+                  <button class="fill" data-testid={`fill-${c.id}`} title="Fill to goal" onclick={() => void fillOne(c)}>↑</button>
+                {/if}
+                <MoneyCell value={assigned} testid={`assigned-${c.id}`} inputTestid={`assigned-input-${c.id}`} onCommit={(v) => commitAssigned(c, v)} />
               {/if}
-              <MoneyCell value={assigned} testid={`assigned-${c.id}`} inputTestid={`assigned-input-${c.id}`} onCommit={(v) => commitAssigned(c, v)} />
             </div></td>
             <td class={`money ${tone(row?.activity ?? 0)}`} data-testid={`activity-${c.id}`}>{formatMoney(row?.activity ?? 0)}</td>
             <td class="money availcell">
-              <button class={`cell money ${tone(available)}`} data-testid={`available-${c.id}`} title="Move money"
-                onclick={() => (move = { from: c.id, fromName: c.name, amount: available })}>{formatMoney(available)}</button>
-              {#if move?.from === c.id}
-                <MovePopover from={c.id} fromName={c.name} amount={available} {groups} categories={visibleCategories} onMove={doMove} onClose={() => (move = null)} />
+              {#if readOnly}
+                <span class={`money ${tone(available)}`} data-testid={`available-${c.id}`}>{formatMoney(available)}</span>
+              {:else}
+                <button class={`cell money ${tone(available)}`} data-testid={`available-${c.id}`} title="Move money"
+                  onclick={() => (move = { from: c.id, fromName: c.name, amount: available })}>{formatMoney(available)}</button>
+                {#if move?.from === c.id}
+                  <MovePopover from={c.id} fromName={c.name} amount={available} {groups} categories={visibleCategories} onMove={doMove} onClose={() => (move = null)} />
+                {/if}
               {/if}
             </td>
             {#if s}
@@ -256,6 +275,7 @@
   .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 0.9rem; }
   .toolbar .spacer { flex: 1; }
   .toggle { color: var(--dim); display: flex; align-items: center; gap: 4px; }
+  .note { color: var(--amber); }
   button.armed { border-color: var(--red); color: var(--red); }
   table { width: 100%; border-collapse: collapse; }
   th { text-align: left; color: var(--dim); font-weight: 500; padding: 6px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }

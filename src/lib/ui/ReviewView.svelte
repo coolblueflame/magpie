@@ -2,8 +2,8 @@
 <script lang="ts">
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
-  import { toast } from './toast.svelte';
-  import { payeeLastCategory } from '../domain/payees';
+  import { toast, undoToast } from './toast.svelte';
+  import { payeeLastCategories } from '../domain/payees';
   import { formatMoney } from '../domain/money';
   import type { LineTarget } from '../domain/transactions';
   import CategoryPicker from './CategoryPicker.svelte';
@@ -12,8 +12,10 @@
   const items = $derived(app.state.transactions
     .filter((t) => t.status === 'new' && accountsById.get(t.accountId)?.onBudget)
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0)));
+  // One pass over the table per change, not one per row per render.
+  const lastCategories = $derived(payeeLastCategories(app.transactionsSnap, accountsById));
   const prefill = (payeeId?: string): LineTarget => {
-    const c = payeeId ? payeeLastCategory(payeeId, app.transactionsSnap, accountsById) : undefined;
+    const c = payeeId ? lastCategories.get(payeeId) : undefined;
     return c ? { type: 'category', categoryId: c } : { type: 'none' };
   };
   /** Explicit picks by transaction id; anything else shows its pre-fill. */
@@ -35,14 +37,21 @@
     .sort((a, b) => dayDiff(a.date, claim.date) - dayDiff(b.date, claim.date));
   let claimPicks = $state<Record<string, string>>({});
   async function applyClaim(id: string) {
-    const txId = claimPicks[id] ?? candidatesFor(openClaims.find((c) => c.id === id)!)[0]?.id;
+    const cands = candidatesFor(openClaims.find((c) => c.id === id)!);
+    // A pick made earlier may no longer be a candidate (the row got shared some other way).
+    const picked = claimPicks[id];
+    if (picked && !cands.some((t) => t.id === picked)) delete claimPicks[id];
+    const txId = cands.find((t) => t.id === claimPicks[id])?.id ?? cands[0]?.id;
     if (!txId || !personAccountId) return;
-    await app.applyClaim(id, txId, personAccountId);
-    toast.show('Applied shared claim', () => void undoStack.undo());
+    error = '';
+    try {
+      await app.applyClaim(id, txId, personAccountId);
+      undoToast('Applied shared claim');
+    } catch (e) { error = (e as Error).message; }
   }
   async function dismissClaim(id: string) {
     await app.dismissClaim(id);
-    toast.show('Dismissed claim', () => void undoStack.undo());
+    undoToast('Dismissed claim');
   }
   let error = $state('');
   let armed = $state(false);
@@ -52,7 +61,7 @@
     error = '';
     try {
       await app.confirmTransaction(id, targetFor(id, payeeId));
-      toast.show('Confirmed', () => void undoStack.undo());
+      undoToast('Confirmed');
     } catch (e) { error = (e as Error).message; }
   }
   async function confirmPrefilled() {
@@ -61,7 +70,7 @@
     armed = false;
     const batch = prefilled.map((t) => ({ id: t.id, target: prefill(t.payeeId) }));
     await app.confirmAll(batch);
-    toast.show(`Confirmed ${batch.length} transactions`, () => void undoStack.undo());
+    undoToast(`Confirmed ${batch.length} transactions`);
   }
 </script>
 
