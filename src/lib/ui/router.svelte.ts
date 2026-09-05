@@ -3,7 +3,7 @@ import type { MonthKey } from '../domain/types';
 
 export type Route =
   | { name: 'budget'; month?: MonthKey } | { name: 'settings' } | { name: 'import' }
-  | { name: 'accounts' } | { name: 'account'; id: string } | { name: 'review' } | { name: 'payees' } | { name: 'loans' };
+  | { name: 'accounts' } | { name: 'account'; id: string } | { name: 'review' } | { name: 'payees' } | { name: 'loans' } | { name: 'charts' };
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
@@ -14,6 +14,7 @@ function parse(hash: string): Route {
   if (parts[0] === 'review') return { name: 'review' };
   if (parts[0] === 'payees') return { name: 'payees' };
   if (parts[0] === 'loans') return { name: 'loans' };
+  if (parts[0] === 'charts') return { name: 'charts' };
   if (parts[0] === 'budget' && parts[1] && /^\d{4}-\d{2}$/.test(parts[1])) return { name: 'budget', month: parts[1] };
   return { name: 'budget' };
 }
@@ -26,6 +27,7 @@ export function toHash(r: Route): string {
   if (r.name === 'review') return '#/review';
   if (r.name === 'payees') return '#/payees';
   if (r.name === 'loans') return '#/loans';
+  if (r.name === 'charts') return '#/charts';
   return r.month ? `#/budget/${r.month}` : '#/';
 }
 

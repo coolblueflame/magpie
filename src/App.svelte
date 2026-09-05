@@ -12,6 +12,7 @@
   import ReviewView from './lib/ui/ReviewView.svelte';
   import PayeesView from './lib/ui/PayeesView.svelte';
   import LoansView from './lib/ui/LoansView.svelte';
+  import ChartsView from './lib/ui/ChartsView.svelte';
   const hasLoans = $derived(app.state.accounts.some((a) => a.kind === 'loan' && !a.closed));
 
   const onBudgetIds = $derived(new Set(app.state.accounts.filter((a) => a.onBudget).map((a) => a.id)));
@@ -49,6 +50,7 @@
     <button data-testid="nav-review" onclick={() => navigate({ name: 'review' })}>Review{#if reviewCount} <span class="badge" data-testid="nav-review-count">{reviewCount}</span>{/if}</button>
     <button data-testid="nav-payees" onclick={() => navigate({ name: 'payees' })}>Payees</button>
     {#if hasLoans}<button data-testid="nav-loans" onclick={() => navigate({ name: 'loans' })}>Loans</button>{/if}
+    <button data-testid="nav-charts" onclick={() => navigate({ name: 'charts' })}>Charts</button>
     <button data-testid="nav-import" onclick={() => navigate({ name: 'import' })}>Import</button>
     <button data-testid="nav-settings" onclick={() => navigate({ name: 'settings' })}>Settings</button>
   </nav>
@@ -66,6 +68,8 @@
     <PayeesView />
   {:else if router.current.name === 'loans'}
     <LoansView />
+  {:else if router.current.name === 'charts'}
+    <ChartsView />
   {:else}
     <BudgetView />
   {/if}

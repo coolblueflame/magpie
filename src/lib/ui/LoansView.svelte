@@ -8,6 +8,17 @@
   import { monthLabel } from '../domain/month';
   import type { Account, LoanTerms } from '../domain/types';
   import { navigate } from './router.svelte';
+  import { loanSeries } from '../domain/charts';
+  import LineChart from './charts/LineChart.svelte';
+  const seriesOf = (a: Account) => {
+    const cents = parseCents(lump[a.id] ?? '') ?? 0;
+    const s = loanSeries($state.snapshot(a), app.transactionsSnap, app.currentMonth, cents > 0 ? cents : 0);
+    return [
+      { name: 'Owed', points: s.history, slot: 1 as const },
+      ...(s.projected.length ? [{ name: 'At the standard payment', points: s.projected, slot: 1 as const, dashed: true }] : []),
+      ...(s.whatIf.length ? [{ name: 'With the lump sum', points: s.whatIf, slot: 3 as const, dashed: true }] : []),
+    ];
+  };
 
   const loans = $derived(app.state.accounts.filter((a) => a.kind === 'loan' && !a.closed).sort((a, b) => a.sortOrder - b.sortOrder));
   const balances = $derived(accountBalances(app.accountsSnap, app.transactionsSnap));
@@ -85,6 +96,9 @@
         </div>
       {:else if a.loan && owedOf(a) <= 0}
         <p class="dim">Nothing owed.</p>
+      {/if}
+      {#if owedOf(a) > 0 || seriesOf(a)[0]!.points.length}
+        <LineChart testid={`loan-chart-${a.id}`} title="Balance owed" series={seriesOf(a)} height={200} />
       {/if}
     </article>
   {/each}

@@ -374,6 +374,13 @@ greys for structure). Keyboard-first where the user spends time.
 - **Import**: drop a file; format detection (OFX by content, YNAB by header, sheet by
   header, otherwise CSV profile flow); preview and summary; commit.
 - **Payees**: rename, merge, see aliases and history.
+- **Charts**: one range row (12 months, 24 months, all time) scoping every chart; net worth at
+  month end (total, budget accounts, tracking accounts), income and spending by month, one
+  category's spending by month with its 12-month average and goal as reference lines,
+  investment income as a running total. Three series at most per chart, a legend at two or
+  more, a table twin on every chart, hover tooltips that never gate a value.
+- **Loans**: terms, what is owed, the projection and what-if (§4.8), and a balance-owed chart
+  with the projection dashed and the what-if beside it.
 - **Settings**: JSON export/import of the whole dataset (the safety net before sync exists),
   sync setup with the honest privacy paragraph, storage persistence status, version.
 
