@@ -104,7 +104,7 @@ test('the shared sheet: one claim applies to the matching card row, one partner-
   await page.getByTestId('sheet-save-settings').click();
   await expect(page.getByTestId('sheet-summary')).toContainText('1 rows you paid become claims (1 match a bank row already)');
   await expect(page.getByTestId('sheet-summary')).toContainText('1 rows the other person paid');
-  await expect(page.getByTestId('sheet-summary')).toContainText('1 already imported');
+  await expect(page.getByTestId('sheet-summary')).toContainText('1 before Sep 2026 belong to the YNAB history');
   await page.getByTestId('commit-sheet').click();
   await expect(page.getByTestId('panel')).toHaveCount(0);
 

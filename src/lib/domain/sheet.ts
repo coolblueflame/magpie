@@ -96,7 +96,10 @@ export interface SheetPlan {
   claims: ShareClaim[];
   /** Rows the partner paid entirely: the user's share, as transactions in the person account. */
   partnerPaid: ImportCandidate[];
+  /** Rows already imported (claim or person-account row exists) or with nothing to post. */
   skipped: number;
+  /** Rows dated before the cutover: history that came in with the YNAB import; left alone. */
+  beforeCutover: number;
   edits: PlanEdit[];
 }
 
@@ -110,8 +113,9 @@ export function planSheet(rows: SheetRow[], personAccountId: string, state: Impo
   const claims: ShareClaim[] = [];
   const partnerPaid: ImportCandidate[] = [];
   let skipped = 0;
+  let beforeCutover = 0;
   for (const r of rows) {
-    if (cutoverMonth && r.date.slice(0, 7) < cutoverMonth) { skipped++; continue; }
+    if (cutoverMonth && r.date.slice(0, 7) < cutoverMonth) { beforeCutover++; continue; }
     const total = r.mine + r.theirs;
     if (r.mine === 0) {
       const { mine } = shareSplit(total, r.percent);
@@ -132,7 +136,7 @@ export function planSheet(rows: SheetRow[], personAccountId: string, state: Impo
     ...claims.map((c) => { const { id, updatedAt, editedAt, deleted, ...rest } = c; void updatedAt; void editedAt; void deleted; return { table: 'claims' as const, id, create: rest as Record<string, unknown> }; }),
     ...created.edits,
   ];
-  return { claims, partnerPaid: created.created, skipped, edits };
+  return { claims, partnerPaid: created.created, skipped, beforeCutover, edits };
 }
 
 export interface ClaimsPlan {

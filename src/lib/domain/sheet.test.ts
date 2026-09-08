@@ -86,7 +86,8 @@ describe('planSheet and planClaims', () => {
     const plan = planSheet(rows, 'acc_partner', state, 1000, () => `c${++k}`, '2026-09-05');
     expect(plan.claims).toEqual([]);
     expect(plan.partnerPaid).toEqual([]);
-    expect(plan.skipped).toBe(2);
+    expect(plan.skipped).toBe(0);
+    expect(plan.beforeCutover).toBe(2);
     const open = planSheet(rows, 'acc_partner', state, 1000, () => `d${++k}`).claims;
     const r = planClaims(open, s.transactions, accountsById, 'acc_partner', () => '', '2026-10');
     expect(r.applied).toEqual([]);

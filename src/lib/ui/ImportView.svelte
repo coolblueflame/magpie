@@ -284,7 +284,7 @@
           <p data-testid="sheet-summary">
             {sheetPlan.claims.length} rows you paid become claims ({sheetPlan.claimsNow} match a bank row already);
             {sheetPlan.partnerPaid.length} rows the other person paid become transactions in {app.state.accounts.find((a) => a.id === sheetSettings.personAccountId)?.name};
-            {sheetPlan.skipped} already imported.
+            {sheetPlan.skipped} already imported{#if sheetPlan.beforeCutover}; {sheetPlan.beforeCutover} before {monthLabel(app.state.settings.cutoverMonth ?? '')} belong to the YNAB history and are left alone{/if}.
           </p>
           <p><button data-testid="commit-sheet" class="primary" disabled={busy || (!sheetPlan.edits.length && !sheetPlan.claimsNow)} onclick={() => void commitSheet()}>Import sheet</button> <button onclick={next}>Skip</button></p>
         {:else}

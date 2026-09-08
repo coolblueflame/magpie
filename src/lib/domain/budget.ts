@@ -1,6 +1,6 @@
 import { accountBalances, lineEffect, needsCategory } from './ledger';
 import { maxMonth, minMonth, monthOf, monthsBetween } from './month';
-import type { Account, Assignment, Category, Cents, MonthKey, Transaction, YnabHistory } from './types';
+import { RTA, type Account, type Assignment, type Category, type Cents, type MonthKey, type Transaction, type YnabHistory } from './types';
 
 export interface BudgetInput {
   accounts: Account[];
@@ -28,6 +28,8 @@ export interface BudgetMonth {
   /** Lines on `new` transactions that touch the budget but have no category yet. */
   uncategorised: Cents;
   onBudgetTotal: Cents;
+  /** Income into Ready to Assign dated in the shown month. */
+  income: Cents;
   /** The latest of the current month, the last month assigned to, and the last month with budget activity. */
   horizon: MonthKey;
   /** Budget-effect activity per category per month, all time; feeds the stats columns. */
@@ -51,6 +53,7 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
 
   const activityByCategory = new Map<string, Map<MonthKey, Cents>>();
   let uncategorised = 0;
+  let income = 0;
   let earliest: MonthKey | undefined;
   let lastActivity: MonthKey | undefined;
   for (const tx of input.transactions) {
@@ -63,6 +66,7 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
       if (!needsCategory(line, own, far)) continue;
       const effect = lineEffect(line, own, far);
       lastActivity = lastActivity ? maxMonth(lastActivity, m) : m;
+      if (line.categoryId === RTA && m === month) income += effect;
       if (line.categoryId) {
         let byMonth = activityByCategory.get(line.categoryId);
         if (!byMonth) { byMonth = new Map(); activityByCategory.set(line.categoryId, byMonth); }
@@ -118,5 +122,5 @@ export function computeBudget(input: BudgetInput, month: MonthKey): BudgetMonth 
     if (accountsById.get(id)?.onBudget) onBudgetTotal += b.working;
   }
 
-  return { month, rows, rta: onBudgetTotal - sumAtHorizon - uncategorised, uncategorised, onBudgetTotal, horizon, activityByCategory };
+  return { month, rows, rta: onBudgetTotal - sumAtHorizon - uncategorised, uncategorised, onBudgetTotal, income, horizon, activityByCategory };
 }

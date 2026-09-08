@@ -44,6 +44,10 @@ test('fill one category and fill all goals, undo as one entry', async ({ page })
 
 test('move money between categories and from Ready to Assign', async ({ page }) => {
   await resetWithSeed(page);
+  await expect(page.getByTestId('month-summary')).toContainText('Income $4,000.00');
+  await expect(page.getByTestId('month-summary')).toContainText('Assigned $2,100.00');
+  await expect(page.getByTestId('month-summary')).toContainText('Spent $1,623.45');
+  await expect(page.getByTestId('moon')).toHaveCount(0);
   await page.getByTestId('available-cat_groc').click();
   await expect(page.getByTestId('move-amount')).toHaveValue('606.55');
   await page.getByTestId('move-amount').fill('100');
@@ -60,6 +64,14 @@ test('move money between categories and from Ready to Assign', async ({ page }) 
   await page.getByTestId('move-amount').press('Enter');
   await expect(page.getByTestId('rta')).toHaveText('$3,950.00');
   await expect(page.getByTestId('available-cat_rent')).toHaveText('$50.00');
+
+  // Every dollar given a job: Ready to Assign at exactly zero.
+  await page.getByTestId('rta').click();
+  await page.getByTestId('move-amount').fill('3950');
+  await page.getByTestId('move-to').selectOption('cat_save');
+  await page.getByTestId('move-confirm').click();
+  await expect(page.getByTestId('rta')).toHaveText('$0.00');
+  await expect(page.getByTestId('moon')).toHaveText('to the moon');
 
   // Zero amount keeps the popover open; Escape closes it.
   await page.getByTestId('available-cat_fun').click();

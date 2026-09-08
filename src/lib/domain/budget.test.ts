@@ -79,6 +79,8 @@ describe('ready to assign', () => {
     expect(b.rta).toBe(50000);
     expect(b.horizon).toBe('2026-11');
     expect(b.onBudgetTotal).toBe(100000);
+    expect(b.income).toBe(100000);
+    expect(computeBudget(input, '2026-10').income).toBe(0);
   });
   test('a post-dated spend lowers its category, not RTA, in every month view', () => {
     const input = base({

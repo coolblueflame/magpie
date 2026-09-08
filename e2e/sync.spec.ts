@@ -61,6 +61,7 @@ test('connect, push on edit, and a second browser pulls the edit', async ({ brow
   await pageA.getByTestId('sync-token').fill('github_pat_test');
   await pageA.getByTestId('sync-connect').click();
   await expect(pageA.getByTestId('sync-status')).toContainText('someone/magpie-data: idle');
+  await expect(pageA.getByTestId('nav-sync')).toContainText('Synced');
   await expect.poll(() => gh.files.has('active.json')).toBe(true);
   expect(gh.files.has('tx-' + new Date().getFullYear() + '.json') || gh.files.has('tx-' + (new Date().getFullYear() - 1) + '.json')).toBe(true);
 

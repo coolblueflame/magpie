@@ -15,6 +15,15 @@
   import ChartsView from './lib/ui/ChartsView.svelte';
   import UndoHistory from './lib/ui/UndoHistory.svelte';
   const hasLoans = $derived(app.state.accounts.some((a) => a.kind === 'loan' && !a.closed));
+  const syncLabel = $derived.by(() => {
+    switch (app.syncStatus) {
+      case 'syncing': return 'Syncing…';
+      case 'error': return 'Sync error';
+      case 'offline': return 'Offline';
+      case 'disabled': return 'Sync off';
+      default: return app.lastSyncAt ? `Synced ${new Date(app.lastSyncAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Synced';
+    }
+  });
 
   const onBudgetIds = $derived(new Set(app.state.accounts.filter((a) => a.onBudget).map((a) => a.id)));
   const reviewCount = $derived(app.state.transactions.filter((t) => t.status === 'new' && onBudgetIds.has(t.accountId)).length);
@@ -57,6 +66,11 @@
     <button data-testid="nav-import" onclick={() => navigate({ name: 'import' })}>Import</button>
     <button data-testid="nav-settings" onclick={() => navigate({ name: 'settings' })}>Settings</button>
     <span class="spacer"></span>
+    {#if app.syncTarget}
+      <button class={`sync ${app.syncStatus}`} data-testid="nav-sync" title={app.syncDetail || app.syncStatus} onclick={() => navigate({ name: 'settings' })}>
+        <span class="dot"></span>{syncLabel}
+      </button>
+    {/if}
     <UndoHistory />
   </nav>
   {#if router.current.name === 'settings'}
@@ -84,6 +98,11 @@
 <style>
   nav { display: flex; align-items: center; gap: 8px; padding: 10px 24px; border-bottom: 1px solid var(--line); background: var(--bg1); }
   .spacer { flex: 1; }
+  .sync { display: inline-flex; align-items: center; gap: 6px; color: var(--dim); font-size: 0.85rem; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--teal); }
+  .sync.syncing .dot { background: var(--blue); }
+  .sync.error .dot, .sync.offline .dot { background: var(--red); }
+  .sync.error, .sync.offline { color: var(--red); border-color: var(--red); }
   .brand { color: var(--blue); font-weight: 700; margin-right: 12px; display: inline-flex; align-items: center; gap: 6px; }
   .mark { border-radius: 5px; display: block; }
   .badge { background: var(--amber); color: var(--bg0); border-radius: 999px; padding: 0 6px; font-size: 0.8rem; font-weight: 600; }

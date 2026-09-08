@@ -28,6 +28,11 @@
   let showHidden = $state(false);
   let showStats = $state(true);
   const groups = $derived([...app.state.groups].filter((g) => showHidden || !g.hidden).sort((a, b) => a.sortOrder - b.sortOrder));
+  const monthTotals = $derived.by(() => {
+    let assigned = 0, spent = 0;
+    for (const r of budget.rows.values()) { assigned += r.assigned; if (r.activity < 0) spent -= r.activity; }
+    return { assigned, spent };
+  });
   const visibleCategories = $derived(visibleOf(app.state.categories, app.state.groups));
   /** Months before the cutover show YNAB's numbers (spec §4.1) and take no edits. */
   const cutover = $derived(app.state.settings.cutoverMonth);
@@ -143,6 +148,7 @@
     <h2 data-testid="month-label">{monthLabel(month)}</h2>
     <button data-testid="month-next" onclick={() => navigate({ name: 'budget', month: addMonths(month, 1) })}>›</button>
     <div class="rta">
+      {#if budget.rta === 0 && !readOnly}<span class="moon" data-testid="moon" title="Every dollar has a job">to the moon</span>{/if}
       <span class="label">Ready to Assign</span>
       {#if readOnly}
         <span class={`rtaval money ${tone(budget.rta)}`} data-testid="rta">{formatMoney(budget.rta)}</span>
@@ -158,6 +164,9 @@
       {/if}
     </div>
   </header>
+  <p class="summary" data-testid="month-summary">
+    Income <b class="money">{formatMoney(budget.income)}</b> · Assigned <b class="money">{formatMoney(monthTotals.assigned)}</b> · Spent <b class="money">{formatMoney(monthTotals.spent)}</b>
+  </p>
   <div class="toolbar">
     <label class="toggle"><input type="checkbox" data-testid="show-hidden" bind:checked={showHidden} /> Show hidden</label>
     <label class="toggle"><input type="checkbox" data-testid="show-stats" bind:checked={showStats} /> Show stats</label>
@@ -276,6 +285,11 @@
   .rtaval { border: none; padding: 0; font-size: 1.4rem; }
   .rtaval:hover { color: var(--blue); }
   .chip { background: var(--bg2); border: 1px solid var(--amber); color: var(--amber); border-radius: 999px; padding: 2px 10px; font-size: 0.85rem; }
+  .summary { margin: -4px 0 8px; color: var(--dim); font-size: 0.9rem; }
+  .summary b { color: var(--text); font-weight: 500; }
+  .moon { color: var(--teal); font-size: 0.85rem; letter-spacing: 0.06em; text-transform: uppercase; animation: rise 600ms ease-out; }
+  @keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .moon { animation: none; } }
   .toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; font-size: 0.9rem; }
   .toolbar .spacer { flex: 1; }
   .toggle { color: var(--dim); display: flex; align-items: center; gap: 4px; }
