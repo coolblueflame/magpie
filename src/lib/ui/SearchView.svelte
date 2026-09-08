@@ -29,7 +29,7 @@
       <thead><tr><th>Date</th><th>Account</th><th>Payee</th><th>Category</th><th>Memo</th><th class="money">Amount</th></tr></thead>
       <tbody>
         {#each result.hits as t (t.id)}
-          <tr data-testid={`hit-${t.id}`} class="hit" onclick={() => navigate({ name: 'account', id: t.accountId })}>
+          <tr data-testid={`hit-${t.id}`} class="hit" onclick={() => navigate({ name: 'account', id: t.accountId, focus: t.id })}>
             <td class="dim">{t.date}</td>
             <td>{accountName(t.accountId)}</td>
             <td>{payeeName(t.payeeId)}</td>

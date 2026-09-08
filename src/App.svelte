@@ -94,7 +94,7 @@
   {:else if router.current.name === 'accounts'}
     <AccountsView />
   {:else if router.current.name === 'account'}
-    {#key router.current.id}<LedgerView id={router.current.id} />{/key}
+    {#key router.current.id}<LedgerView id={router.current.id} focus={router.current.focus} />{/key}
   {:else if router.current.name === 'review'}
     <ReviewView />
   {:else if router.current.name === 'payees'}

@@ -107,6 +107,12 @@ export function kindOf(lines: Line[]): LedgerKind {
   return l.categoryId ? { type: 'category', categoryId: l.categoryId } : { type: 'category' };
 }
 
+/** The smallest whole number of pages that shows row `index`; `limit` when it already does or the row is absent. */
+export function limitToShow(index: number, limit: number, page: number): number {
+  if (index < 0 || index < limit) return limit;
+  return (Math.floor(index / page) + 1) * page;
+}
+
 /** The ledger's one-cell description of a row's target. */
 export function kindLabel(k: LedgerKind, accountName: (id: string) => string, categoryName: (id: string) => string): string {
   if (k.type === 'split') return `Split (${k.lines})`;

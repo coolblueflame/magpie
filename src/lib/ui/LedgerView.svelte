@@ -3,7 +3,8 @@
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
   import { toast, undoToast } from './toast.svelte';
-  import { accountBalances, kindLabel, ledgerRows, type LedgerKind, type LedgerRow } from '../domain/ledger';
+  import { tick, untrack } from 'svelte';
+  import { accountBalances, kindLabel, ledgerRows, limitToShow, type LedgerKind, type LedgerRow } from '../domain/ledger';
   import { formatMoney } from '../domain/money';
   import { todayKey } from '../domain/month';
   import { draftFromTransaction, emptyDraft, type TxDraft } from '../domain/transactions';
@@ -37,7 +38,8 @@
     if (tx) undoToast(`Balance set to ${formatMoney(cents)}`);
   }
 
-  let { id }: { id: string } = $props();
+  /** `focus` is a row to land on (a transaction id, or a far row's `${txId}:${line}` id), typically from search. */
+  let { id, focus }: { id: string; focus?: string } = $props();
   const PAGE = 100;
 
   const account = $derived(app.state.accounts.find((a) => a.id === id));
@@ -46,6 +48,21 @@
   let limit = $state(PAGE);
   /** A ledger row id being edited, or 'new' for the add form. */
   let editing = $state<string | null>(null);
+  /** The row `focus` resolved to; highlighted while the URL names it. */
+  let highlighted = $state<string | null>(null);
+
+  // Landing on a row: widen the page window to include it and scroll it to centre once per
+  // focus. Rows are read untracked so later edits do not scroll the page again.
+  $effect(() => {
+    const target = focus;
+    untrack(() => {
+      const idx = target ? rows.findIndex((r) => r.id === target || r.txId === target) : -1;
+      highlighted = idx < 0 ? null : rows[idx]!.id;
+      if (idx < 0) return;
+      limit = limitToShow(idx, limit, PAGE);
+      void tick().then(() => document.querySelector(`[data-testid="row-${CSS.escape(rows[idx]!.id)}"]`)?.scrollIntoView({ block: 'center' }));
+    });
+  });
 
   const accountName = (aid: string) => app.state.accounts.find((a) => a.id === aid)?.name ?? '?';
   const categoryName = (cid: string) => (cid === RTA ? 'Ready to Assign' : app.state.categories.find((c) => c.id === cid)?.name ?? '?');
@@ -112,7 +129,7 @@
       <thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Memo</th><th class="money">Outflow</th><th class="money">Inflow</th><th class="money">Balance</th><th>C</th></tr></thead>
       <tbody>
         {#each rows.slice(0, limit) as row (row.id)}
-          <tr data-testid={`row-${row.id}`} class:far={row.far} class:isnew={row.status === 'new'} onclick={() => (editing = editing === row.id ? null : row.id)}>
+          <tr data-testid={`row-${row.id}`} class:far={row.far} class:isnew={row.status === 'new'} class:focus={row.id === highlighted} onclick={() => (editing = editing === row.id ? null : row.id)}>
             <td class="date">{row.date}</td>
             <td>{payeeName(row.payeeId)}</td>
             <td>{label(row.kind)}{#if !row.far && sharedOf(row.txId)} <span class="shared" data-testid={`shared-${row.id}`}>· shared {sharedOf(row.txId)!.percent}%</span>{/if}{#if row.status === 'new'} <span class="badge" data-testid={`new-${row.id}`}>new</span>{/if}</td>
@@ -162,6 +179,9 @@
   tbody tr:not(.editrow):hover td { background: var(--bg1); }
   tr.far td:first-child { border-left: 2px solid var(--blue-deep); }
   tr.isnew td { background: rgba(240, 180, 90, 0.06); }
+  tr.focus td { background: rgba(57, 135, 229, 0.16); animation: land 1.6s ease-out; }
+  @keyframes land { from { background: rgba(57, 135, 229, 0.55); } to { background: rgba(57, 135, 229, 0.16); } }
+  @media (prefers-reduced-motion: reduce) { tr.focus td { animation: none; } }
   .badge { background: var(--amber); color: var(--bg0); border-radius: 999px; padding: 0 6px; font-size: 0.75rem; font-weight: 600; }
   .shared { color: var(--teal); font-size: 0.85rem; }
   .clr { border: none; padding: 0 4px; color: var(--dim); }

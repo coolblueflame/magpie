@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { accountBalances, ledgerRows, lineEffect, needsCategory, validateTransaction } from './ledger';
+import { accountBalances, ledgerRows, lineEffect, needsCategory, validateTransaction, limitToShow } from './ledger';
 import { seedData } from './seed';
 import type { Account, Transaction } from './types';
 
@@ -125,5 +125,19 @@ describe('ledgerRows', () => {
     const rows = ledgerRows('acc_chq', [split, { ...s.transactions[1]!, deleted: true }]);
     expect(rows).toHaveLength(1);
     expect(rows[0]!.kind).toEqual({ type: 'split', lines: 2 });
+  });
+});
+
+describe('limitToShow', () => {
+  test('keeps the window when the row is already shown or absent', () => {
+    expect(limitToShow(0, 100, 100)).toBe(100);
+    expect(limitToShow(99, 100, 100)).toBe(100);
+    expect(limitToShow(-1, 100, 100)).toBe(100);
+    expect(limitToShow(150, 300, 100)).toBe(300);
+  });
+  test('widens to the page that holds the row', () => {
+    expect(limitToShow(100, 100, 100)).toBe(200);
+    expect(limitToShow(250, 100, 100)).toBe(300);
+    expect(limitToShow(299, 100, 100)).toBe(300);
   });
 });

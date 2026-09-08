@@ -3,14 +3,14 @@ import type { MonthKey } from '../domain/types';
 
 export type Route =
   | { name: 'budget'; month?: MonthKey } | { name: 'settings' } | { name: 'import'; accountId?: string }
-  | { name: 'accounts' } | { name: 'account'; id: string } | { name: 'review' } | { name: 'payees' } | { name: 'loans' } | { name: 'charts' } | { name: 'search'; q?: string };
+  | { name: 'accounts' } | { name: 'account'; id: string; focus?: string } | { name: 'review' } | { name: 'payees' } | { name: 'loans' } | { name: 'charts' } | { name: 'search'; q?: string };
 
 function parse(hash: string): Route {
   const parts = hash.replace(/^#\/?/, '').split('/').filter(Boolean);
   if (parts[0] === 'settings') return { name: 'settings' };
   if (parts[0] === 'import') return parts[1] ? { name: 'import', accountId: parts[1] } : { name: 'import' };
   if (parts[0] === 'accounts') return { name: 'accounts' };
-  if (parts[0] === 'account' && parts[1]) return { name: 'account', id: parts[1] };
+  if (parts[0] === 'account' && parts[1]) return parts[2] ? { name: 'account', id: parts[1], focus: parts[2] } : { name: 'account', id: parts[1] };
   if (parts[0] === 'review') return { name: 'review' };
   if (parts[0] === 'payees') return { name: 'payees' };
   if (parts[0] === 'loans') return { name: 'loans' };
@@ -24,7 +24,7 @@ export function toHash(r: Route): string {
   if (r.name === 'settings') return '#/settings';
   if (r.name === 'import') return r.accountId ? `#/import/${r.accountId}` : '#/import';
   if (r.name === 'accounts') return '#/accounts';
-  if (r.name === 'account') return `#/account/${r.id}`;
+  if (r.name === 'account') return r.focus ? `#/account/${r.id}/${r.focus}` : `#/account/${r.id}`;
   if (r.name === 'review') return '#/review';
   if (r.name === 'payees') return '#/payees';
   if (r.name === 'loans') return '#/loans';
