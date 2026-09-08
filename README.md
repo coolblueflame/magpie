@@ -20,7 +20,8 @@ private GitHub repository you own.
   from Ready to Assign, from the cell itself.
 - Suggested goals from your own assignment history, and per-category stats on the same row:
   all-time monthly average, trailing twelve months, last month.
-- Undo for everything, twelve deep.
+- Search every account at once by payee, memo, category, account, amount or date (press /).
+- Undo for everything, fifty deep, with a history you can step back through.
 
 **Accounts and ledgers**
 - Chequing, savings, credit cards, cash, tracking accounts (investments, loans) and "person"

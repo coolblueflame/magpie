@@ -3,7 +3,7 @@
   import { app } from '../state/app.svelte';
   import { undoStack } from '../state/undo.svelte';
   import { toast, undoToast } from './toast.svelte';
-  import { accountBalances, ledgerRows, type LedgerKind, type LedgerRow } from '../domain/ledger';
+  import { accountBalances, kindLabel, ledgerRows, type LedgerKind, type LedgerRow } from '../domain/ledger';
   import { formatMoney } from '../domain/money';
   import { todayKey } from '../domain/month';
   import { draftFromTransaction, emptyDraft, type TxDraft } from '../domain/transactions';
@@ -50,11 +50,7 @@
   const accountName = (aid: string) => app.state.accounts.find((a) => a.id === aid)?.name ?? '?';
   const categoryName = (cid: string) => (cid === RTA ? 'Ready to Assign' : app.state.categories.find((c) => c.id === cid)?.name ?? '?');
   const payeeName = (pid?: string) => (pid ? app.state.payees.find((p) => p.id === pid)?.name ?? '' : '');
-  function label(k: LedgerKind): string {
-    if (k.type === 'split') return `Split (${k.lines})`;
-    if (k.type === 'transfer') return `Transfer: ${accountName(k.accountId)}${k.categoryId ? ` · ${categoryName(k.categoryId)}` : ''}`;
-    return k.categoryId ? categoryName(k.categoryId) : '';
-  }
+  const label = (k: LedgerKind) => kindLabel(k, accountName, categoryName);
   const tone = (c: number) => (c < 0 ? 'neg' : c > 0 ? 'pos' : '');
 
   function draftFor(row: LedgerRow): { draft: TxDraft; payee: string; note: string; shared: { accountId: string; percent: number } | null } {

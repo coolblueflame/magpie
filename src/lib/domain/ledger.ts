@@ -99,11 +99,19 @@ export interface LedgerRow {
   running: Cents;
 }
 
-function kindOf(lines: Line[]): LedgerKind {
+/** How the ledger classifies a transaction's lines: one category, one transfer, or a split. */
+export function kindOf(lines: Line[]): LedgerKind {
   if (lines.length !== 1) return { type: 'split', lines: lines.length };
   const l = lines[0]!;
   if (l.transferAccountId) return { type: 'transfer', accountId: l.transferAccountId, ...(l.categoryId ? { categoryId: l.categoryId } : {}) };
   return l.categoryId ? { type: 'category', categoryId: l.categoryId } : { type: 'category' };
+}
+
+/** The ledger's one-cell description of a row's target. */
+export function kindLabel(k: LedgerKind, accountName: (id: string) => string, categoryName: (id: string) => string): string {
+  if (k.type === 'split') return `Split (${k.lines})`;
+  if (k.type === 'transfer') return `Transfer: ${accountName(k.accountId)}${k.categoryId ? ` · ${categoryName(k.categoryId)}` : ''}`;
+  return k.categoryId ? categoryName(k.categoryId) : '';
 }
 
 /**
